@@ -55,8 +55,15 @@ func (h *natsRPCImpl) AddRPC(method string, handler RPCHandleFunc, optsFuncs ...
 		o(&opts)
 	}
 
+	var path string
+	if len(h.opts.BaseName) == 0 {
+		path = method
+	} else {
+		path = fmt.Sprintf("%s.%s", h.opts.BaseName, method)
+	}
+
 	route := &Route{
-		Path:    fmt.Sprintf("%s.%s", h.opts.BaseName, method),
+		Path:    path,
 		Handler: handler,
 		Opts:    opts,
 	}
