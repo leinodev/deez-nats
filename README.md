@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/TexHik620953/natsrpc-go.svg)](https://pkg.go.dev/github.com/TexHik620953/natsrpc-go)
 
-natsrpc-go is a lightweight wrapper for NATS that provides a convenient RPC interface for Go applications. The library makes it easy to register and call remote methods through NATS.
+natsrpc is a lightweight wrapper for NATS that provides a convenient RPC interface for Go applications. The library makes it easy to register and call remote methods through NATS.
 
 ## Features
 
@@ -16,9 +16,10 @@ natsrpc-go is a lightweight wrapper for NATS that provides a convenient RPC inte
 
 ```bash
 go get github.com/TexHik620953/natsrpc-go
-
+```
 
 ## Quickstart example
+
 ```go
 package main
 
