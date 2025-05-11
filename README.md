@@ -1,4 +1,4 @@
-```# natsrpc-go
+# natsrpc-go
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/TexHik620953/natsrpc-go.svg)](https://pkg.go.dev/github.com/TexHik620953/natsrpc-go)
 
