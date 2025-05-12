@@ -9,14 +9,18 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+// Routing
+
 type RPCHandleFunc func(c NatsRPCContext) error
 
 type Route struct {
 	Path        string
 	Handler     RPCHandleFunc
-	Opts        HandlerOptions
+	Opts        RPCHandlerOptions
 	Subscripion *nats.Subscription
 }
+
+// NatsRPC
 
 type NatsRPC interface {
 	AddRPC(method string, handler RPCHandleFunc, optsFuncs ...HandlerOptionFunc)
@@ -29,7 +33,7 @@ type natsRPCImpl struct {
 	nc     *nats.Conn
 	routes map[string]*Route
 
-	opts    Options
+	opts    NatsRPCOptions
 	running bool
 	ctx     context.Context
 }
@@ -50,7 +54,7 @@ func (h *natsRPCImpl) AddRPC(method string, handler RPCHandleFunc, optsFuncs ...
 	if h.ctx != nil {
 		panic("cannot add RPC handler after StartWithContext called")
 	}
-	opts := h.opts.HandlerOpts
+	opts := h.opts.RPCHandlerOpts
 	for _, o := range optsFuncs {
 		o(&opts)
 	}
@@ -174,4 +178,19 @@ func (h *natsRPCImpl) CallRPC(subj string, request any, response any, optsFuncs 
 		return fmt.Errorf("error in %s handler: %s", subj, responseWrap.Error.Message)
 	}
 	return nil
+}
+
+// DTO
+
+type NatsError struct {
+	Message string `json:"m"`
+}
+
+type natsRPCResponse[T any] struct {
+	Data  T `json:"d"`
+	Error *NatsError
+}
+
+type natsRPCRequest[T any] struct {
+	Data T `json:"d"`
 }

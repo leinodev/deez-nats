@@ -5,16 +5,16 @@ import (
 	"time"
 )
 
-type OptionFunc func(*Options)
-type HandlerOptionFunc func(*HandlerOptions)
+type OptionFunc func(*NatsRPCOptions)
+type HandlerOptionFunc func(*RPCHandlerOptions)
 type RPCCallOptionFunc func(*RPCCallOptions)
 
 // Defaults
 
-func GetDefaultOptions() Options {
-	return Options{
+func GetDefaultOptions() NatsRPCOptions {
+	return NatsRPCOptions{
 		BaseName: "default",
-		HandlerOpts: HandlerOptions{
+		RPCHandlerOpts: RPCHandlerOptions{
 			HandlerTimeout: time.Minute,
 		},
 		RPCCallOpts: RPCCallOptions{
@@ -29,13 +29,13 @@ func DefaultErrHandler(c NatsRPCContext, err error) {
 
 // Options
 
-type Options struct {
+type NatsRPCOptions struct {
 	BaseName string
 
-	HandlerOpts HandlerOptions
-	RPCCallOpts RPCCallOptions
+	RPCHandlerOpts RPCHandlerOptions
+	RPCCallOpts    RPCCallOptions
 }
-type HandlerOptions struct {
+type RPCHandlerOptions struct {
 	HandlerTimeout time.Duration
 }
 type RPCCallOptions struct {
@@ -43,7 +43,7 @@ type RPCCallOptions struct {
 }
 
 func WithHandlerTimeout(timeout time.Duration) HandlerOptionFunc {
-	return func(ho *HandlerOptions) {
+	return func(ho *RPCHandlerOptions) {
 		ho.HandlerTimeout = timeout
 	}
 }
@@ -54,7 +54,7 @@ func WithRPCTimeout(timeout time.Duration) RPCCallOptionFunc {
 }
 
 func WithBaseName(name string) OptionFunc {
-	return func(o *Options) {
+	return func(o *NatsRPCOptions) {
 		o.BaseName = name
 	}
 }
