@@ -73,14 +73,14 @@ func (c *natsRPCContextImpl) RespondJSON(value interface{}) error {
 	return c.msg.Respond(data)
 }
 func (c *natsRPCContextImpl) Ok(value interface{}) error {
-	val := NatsRPCResponse[interface{}]{
+	val := natsRPCResponse[interface{}]{
 		Error: nil,
 		Data:  &value,
 	}
 	return c.RespondJSON(val)
 }
 func (c *natsRPCContextImpl) Error(err string) error {
-	val := NatsRPCResponse[interface{}]{
+	val := natsRPCResponse[interface{}]{
 		Error: &NatsError{
 			Message: err,
 		},
@@ -92,7 +92,7 @@ func (c *natsRPCContextImpl) GetPath() string {
 }
 
 func (c *natsRPCContextImpl) mustError(err string) error {
-	val := NatsRPCResponse[interface{}]{
+	val := natsRPCResponse[interface{}]{
 		Error: &NatsError{
 			Message: err,
 		},

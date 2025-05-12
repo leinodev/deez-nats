@@ -3,11 +3,12 @@ package natsrpc
 type NatsError struct {
 	Message string `json:"m"`
 }
-type NatsRPCResponse[T any] struct {
+
+type natsRPCResponse[T any] struct {
 	Data  T `json:"d"`
 	Error *NatsError
 }
 
-type NatsRPCRequest[T any] struct {
+type natsRPCRequest[T any] struct {
 	Data T `json:"d"`
 }

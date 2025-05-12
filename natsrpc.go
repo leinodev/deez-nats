@@ -161,7 +161,7 @@ func (h *natsRPCImpl) CallRPC(subj string, request any, response any, optsFuncs 
 		return err
 	}
 
-	responseWrap := NatsRPCResponse[any]{
+	responseWrap := natsRPCResponse[any]{
 		Data: response,
 	}
 
