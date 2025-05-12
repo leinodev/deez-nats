@@ -51,6 +51,9 @@ func New(natsConn *nats.Conn, options ...OptionFunc) NatsRPC {
 }
 
 func (h *natsRPCImpl) AddRPC(method string, handler RPCHandleFunc, optsFuncs ...HandlerOptionFunc) {
+	if len(method) == 0 {
+		panic("method cannot be empty")
+	}
 	if h.ctx != nil {
 		panic("cannot add RPC handler after StartWithContext called")
 	}
