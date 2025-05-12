@@ -84,6 +84,9 @@ func (h *natsRPCImpl) StartWithContext(ctx context.Context) error {
 	if len(h.routes) == 0 {
 		panic("StartWithContext called, but no RPC handlers added")
 	}
+	if h.ctx != nil {
+		panic("startWithContext called more than once")
+	}
 	h.ctx = ctx
 	go func() {
 		<-ctx.Done()
