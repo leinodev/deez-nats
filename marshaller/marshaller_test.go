@@ -1,8 +1,9 @@
 package marshaller_test
 
 import (
-	"simple/marshaller"
 	"testing"
+
+	"github.com/TexHik620953/natsrpc-go/marshaller"
 )
 
 func TestProto(t *testing.T) {

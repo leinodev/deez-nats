@@ -16,7 +16,10 @@ type RPCContext interface {
 }
 
 func newRpcContext() RPCContext {
-	return &rpcContextImpl{}
+	return &rpcContextImpl{
+		ctx:             context.Background(),
+		responseWritten: false,
+	}
 }
 
 type rpcContextImpl struct {
