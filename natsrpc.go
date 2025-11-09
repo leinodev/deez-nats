@@ -5,12 +5,13 @@ import "context"
 type RpcHandleFunc = func(c RPCContext) error
 type RpcMiddlewareFunc = func(next RpcHandleFunc) RpcHandleFunc
 
-type HandlerOptionFunc = any
-type RPCCallOptionFunc = any
+type HandlerOptions = struct{}
+
+type CallOptions = struct{}
 
 type NatsRPC interface {
 	RPCRouter
 
 	StartWithContext(ctx context.Context) error
-	CallRPC(subj string, request any, response any, optsFuncs ...RPCCallOptionFunc) error
+	CallRPC(subj string, request any, response any, optsFuncs CallOptions) error
 }
