@@ -2,43 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/TexHik620953/natsrpc-go"
 	"github.com/nats-io/nats.go"
 )
 
-type ExampleRequest struct {
-	Text string
-}
-type ExampleResponse struct {
-	ModifiedText string
-	SymbolsCount int
+type RpcLib interface {
+	RegisterRpc(method string, handler func())
 }
 
-func greeterfunc1(c natsrpc.NatsRPCContext) error {
-	var request ExampleRequest
-	err := c.RequestJSON(&request)
-	if err != nil {
-		return err
-	}
+func marshallerTest() {
 
-	return c.Ok(&ExampleResponse{
-		ModifiedText: "Hello, " + request.Text,
-		SymbolsCount: len(request.Text),
-	})
-}
-func greeterfunc2(c natsrpc.NatsRPCContext) error {
-	var request ExampleRequest
-	err := c.RequestJSON(&request)
-	if err != nil {
-		return err
-	}
-
-	return c.Ok(&ExampleResponse{
-		ModifiedText: "Bye, " + request.Text,
-		SymbolsCount: -len(request.Text),
-	})
 }
 
 func main() {
@@ -47,37 +20,54 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	nc.ChanSubscribe()
+}
 
-	// Create natsrpc wrapper with defined base name
-	nrpc := natsrpc.New(nc, natsrpc.WithBaseName("testapp"))
+type MyRequst struct {
+	UserID string
+}
 
-	// Register handlers
-	nrpc.AddRPC("f1", greeterfunc1)
-	nrpc.AddRPC("f2", greeterfunc2)
+type MyResponse struct {
+	Name string
+}
 
-	// Start subscriptions
-	err = nrpc.StartWithContext(context.Background())
+type rpcResponse struct {
+	Data any
+	Err  string
+}
+
+type RPCRequestHeaders interface {
+	Get(k string) string
+}
+type RPCResponseHeaders interface {
+	RPCRequestHeaders
+	Set(k string, v string)
+	Del(k string)
+}
+
+type RPCContext interface {
+	context.Context
+	Request(data any) error
+
+	Ok(data any) error
+
+	RequestHeaders() RPCRequestHeaders
+	Headers() RPCResponseHeaders
+}
+
+func srakaHandler(c RPCContext) error {
+	var msg MyRequst
+	err := c.Request(&msg)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	// First handler
-	{
-		var resp ExampleResponse
-		err = nrpc.CallRPC("testapp.f1", &ExampleRequest{Text: "natsrpc1"}, &resp)
-		if err != nil {
-			panic(err)
-		}
 
-		fmt.Println(resp.ModifiedText, resp.SymbolsCount)
+	data, err := &MyResponse{}, nil
+	if err != nil {
+		return err
 	}
-	// Second handler
-	{
-		var resp ExampleResponse
-		err = nrpc.CallRPC("testapp.f2", &ExampleRequest{Text: "natsrpc2"}, &resp)
-		if err != nil {
-			panic(err)
-		}
+	srakaHeader := c.RequestHeaders().Get("sraka")
+	c.Headers().Set("X-User-ID", srakaHeader)
 
-		fmt.Println(resp.ModifiedText, resp.SymbolsCount)
-	}
+	return c.Ok(data)
 }
