@@ -8,9 +8,8 @@ type JsonTestMessage struct {
 }
 
 type jsonWrap struct {
-	Data    any               `json:"d"`
-	Err     string            `json:"e"`
-	Headers map[string]string `json:"h"`
+	Data any    `json:"d"`
+	Err  string `json:"e"`
 }
 
 type jsonPayloadMarshaller struct {
@@ -21,9 +20,8 @@ func NewJsonMarshaller() PayloadMarshaller {
 }
 func (*jsonPayloadMarshaller) Marshall(v *MarshalObject) ([]byte, error) {
 	data, err := json.Marshal(&jsonWrap{
-		Data:    v.Data,
-		Err:     v.Error,
-		Headers: v.Headers,
+		Data: v.Data,
+		Err:  v.Error,
 	})
 	if err != nil {
 		return nil, err
@@ -38,6 +36,5 @@ func (*jsonPayloadMarshaller) Unmarshall(data []byte, v *MarshalObject) error {
 		return err
 	}
 	v.Error = wrap.Err
-	v.Headers = wrap.Headers
 	return nil
 }

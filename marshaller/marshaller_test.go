@@ -18,9 +18,6 @@ func TestProto(t *testing.T) {
 	bytes, err := marshaller.DefaultProtoMarshaller.Marshall(&marshaller.MarshalObject{
 		Data:  content,
 		Error: "test",
-		Headers: map[string]string{
-			"X-User-ID": "test",
-		},
 	})
 	if err != nil {
 		t.Error(err)
@@ -52,11 +49,6 @@ func BenchmarkProtoRoundTrip(b *testing.B) {
 	originalObj := &marshaller.MarshalObject{
 		Data:  content,
 		Error: "",
-		Headers: map[string]string{
-			"X-User-ID":    "benchmark-user",
-			"X-Request-ID": "req-123",
-			"User-Agent":   "benchmark/1.0",
-		},
 	}
 
 	b.ResetTimer()
@@ -92,9 +84,6 @@ func TestJson(t *testing.T) {
 	bytes, err := marshaller.DefaultJsonMarshaller.Marshall(&marshaller.MarshalObject{
 		Data:  content,
 		Error: "test",
-		Headers: map[string]string{
-			"X-User-ID": "test",
-		},
 	})
 	if err != nil {
 		t.Error(err)
@@ -126,11 +115,6 @@ func BenchmarkJsonRoundTrip(b *testing.B) {
 	originalObj := &marshaller.MarshalObject{
 		Data:  content,
 		Error: "",
-		Headers: map[string]string{
-			"X-User-ID":    "benchmark-user",
-			"X-Request-ID": "req-123",
-			"User-Agent":   "benchmark/1.0",
-		},
 	}
 
 	b.ResetTimer()

@@ -11,7 +11,6 @@ type PayloadMarshaller interface {
 }
 
 type MarshalObject struct {
-	Data    any
-	Error   string
-	Headers map[string]string
+	Data  any
+	Error string
 }

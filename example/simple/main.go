@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
+	"log"
+	"simple/protocoljson"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
-
-type RpcLib interface {
-	RegisterRpc(method string, handler func())
-}
-
-func marshallerTest() {
-
-}
 
 func main() {
 	// Connect to nats cluster
@@ -20,54 +16,29 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	nc.ChanSubscribe()
-}
+	defer nc.Close()
 
-type MyRequst struct {
-	UserID string
-}
+	events := NewEventRouter(nc)
 
-type MyResponse struct {
-	Name string
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-type rpcResponse struct {
-	Data any
-	Err  string
-}
+	go func() {
+		if err := events.StartWithContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("events stopped with error: %v", err)
+		}
+	}()
 
-type RPCRequestHeaders interface {
-	Get(k string) string
-}
-type RPCResponseHeaders interface {
-	RPCRequestHeaders
-	Set(k string, v string)
-	Del(k string)
-}
-
-type RPCContext interface {
-	context.Context
-	Request(data any) error
-
-	Ok(data any) error
-
-	RequestHeaders() RPCRequestHeaders
-	Headers() RPCResponseHeaders
-}
-
-func srakaHandler(c RPCContext) error {
-	var msg MyRequst
-	err := c.Request(&msg)
+	// Emit example events
+	err = events.Publish(ctx, "entity.created", protocoljson.EntityEvent{ID: "42", Name: "example"}, nil)
 	if err != nil {
-		return err
+		log.Printf("publish entity.created: %v", err)
 	}
 
-	data, err := &MyResponse{}, nil
+	err = events.Publish(ctx, "entity.updated", protocoljson.EntityEvent{ID: "42", Name: "example-renamed"}, nil)
 	if err != nil {
-		return err
+		log.Printf("publish entity.updated: %v", err)
 	}
-	srakaHeader := c.RequestHeaders().Get("sraka")
-	c.Headers().Set("X-User-ID", srakaHeader)
 
-	return c.Ok(data)
+	time.Sleep(2 * time.Second)
 }
