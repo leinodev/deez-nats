@@ -48,5 +48,9 @@ func RequireJetStream(t *testing.T, nc *nats.Conn) nats.JetStreamContext {
 		t.Skipf("jetstream is unavailable: %v", err)
 	}
 
+	if _, err := js.AccountInfo(); err != nil {
+		t.Skipf("jetstream is unavailable: %v", err)
+	}
+
 	return js
 }
