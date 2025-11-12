@@ -29,6 +29,7 @@ type natsRpcImpl struct {
 	start bool
 }
 
+// TODO: Add options builder
 func NewNatsRPC(nc *nats.Conn, baseRoute string) NatsRPC {
 	defaultHandler := HandlerOptions{
 		Marshaller: marshaller.DefaultJsonMarshaller,

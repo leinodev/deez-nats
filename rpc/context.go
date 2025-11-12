@@ -3,14 +3,16 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 
-var errResponseAlreadyWritten = errors.New("rpc response already written")
+var (
+	ErrResponseAlreadyWritten = errors.New("rpc response already written")
+	ErrEmptyError             = errors.New("cannot respond with empty error")
+)
 
 func newRpcContext(parent context.Context, msg *nats.Msg, handlerOptions HandlerOptions) RPCContext {
 	return &rpcContextImpl{
@@ -60,7 +62,7 @@ func (c *rpcContextImpl) Request(data any) error {
 }
 func (c *rpcContextImpl) Ok(data any) error {
 	if c.respWr {
-		return errResponseAlreadyWritten
+		return ErrResponseAlreadyWritten
 	}
 
 	obj := &marshaller.MarshalObject{
@@ -85,10 +87,10 @@ func (c *rpcContextImpl) responseWritten() bool {
 }
 func (c *rpcContextImpl) writeError(werr error) error {
 	if werr == nil {
-		return fmt.Errorf("cannot respond with empty error")
+		return ErrEmptyError
 	}
 	if c.respWr {
-		return errResponseAlreadyWritten
+		return ErrResponseAlreadyWritten
 	}
 
 	err := c.respond(&marshaller.MarshalObject{
