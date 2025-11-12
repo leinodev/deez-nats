@@ -43,7 +43,7 @@ jobs:
         run: go mod download
 
       - name: Линт (golangci-lint)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v1.60.3
           args: --timeout=5m
