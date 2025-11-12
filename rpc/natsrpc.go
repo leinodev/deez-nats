@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 
-const defaultRequestTimeout = 5 * time.Second
+var (
+	ErrInvalidSubject = errors.New("invalid subject")
+	ErrRPCResponse    = errors.New("rpc responded error")
+)
 
 type natsRpcImpl struct {
+	NatsRPC
 	nc *nats.Conn
 
 	rootRouter RPCRouter
@@ -26,21 +29,19 @@ type natsRpcImpl struct {
 	start bool
 }
 
-func NewNatsRPC(nc *nats.Conn) NatsRPC {
-	defaultMarshaller := marshaller.DefaultJsonMarshaller
-
+func NewNatsRPC(nc *nats.Conn, baseRoute string) NatsRPC {
 	defaultHandler := HandlerOptions{
-		Marshaller: defaultMarshaller,
+		Marshaller: marshaller.DefaultJsonMarshaller,
 	}
 	defaultCall := CallOptions{
-		Marshaller: defaultMarshaller,
+		Marshaller: marshaller.DefaultJsonMarshaller,
 	}
 
 	return &natsRpcImpl{
 		nc:                 nc,
 		defaultHandlerOpts: defaultHandler,
 		defaultCallOpts:    defaultCall,
-		rootRouter:         newRouter("", defaultHandler),
+		rootRouter:         newRouter(baseRoute, defaultHandler),
 	}
 }
 
@@ -74,13 +75,10 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 	}
 
 	for _, route := range routes {
-		if route.options.Marshaller == nil {
-			route.options.Marshaller = r.defaultHandlerOpts.Marshaller
-		}
-
 		handler := route.handler
-		for i := len(route.middlewares) - 1; i >= 0; i-- {
-			handler = route.middlewares[i](handler)
+
+		for _, mv := range route.middlewares {
+			handler = mv(handler)
 		}
 
 		sub, err := r.nc.Subscribe(route.method, r.wrapRPCHandler(ctx, route, handler))
@@ -89,7 +87,9 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 			return fmt.Errorf("subscribe %s: %w", route.method, err)
 		}
 
-		r.trackSubscription(sub)
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.subs = append(r.subs, sub)
 	}
 
 	go func() {
@@ -100,32 +100,27 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 	return nil
 }
 
-func (r *natsRpcImpl) CallRPC(subj string, request any, response any, opts CallOptions) error {
+func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, response any, opts CallOptions) error {
 	if subj == "" {
-		return errors.New("empty subject")
+		return fmt.Errorf("%w: empty subject", ErrInvalidSubject)
 	}
 
-	options := r.defaultCallOpts
-	if opts.Marshaller != nil {
-		options.Marshaller = opts.Marshaller
-	}
-	if options.Marshaller == nil {
-		options.Marshaller = marshaller.DefaultJsonMarshaller
+	if opts.Marshaller == nil {
+		opts.Marshaller = r.defaultCallOpts.Marshaller
 	}
 
-	payload, err := options.Marshaller.Marshall(&marshaller.MarshalObject{
+	payload, err := opts.Marshaller.Marshall(&marshaller.MarshalObject{
 		Data: request,
 	})
 	if err != nil {
-		return fmt.Errorf("marshall request: %w", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	timeout := r.nc.Opts.Timeout
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
-
-	msg, err := r.nc.Request(subj, payload, timeout)
+	msg, err := r.nc.RequestMsgWithContext(ctx, &nats.Msg{
+		Subject: subj,
+		Data:    payload,
+		Header:  opts.Headers,
+	})
 	if err != nil {
 		return err
 	}
@@ -134,14 +129,13 @@ func (r *natsRpcImpl) CallRPC(subj string, request any, response any, opts CallO
 		Data: response,
 	}
 
-	if err := options.Marshaller.Unmarshall(msg.Data, respObj); err != nil {
+	if err := opts.Marshaller.Unmarshall(msg.Data, respObj); err != nil {
 		return fmt.Errorf("unmarshall response: %w", err)
 	}
 
 	if respObj.Error != "" {
-		return errors.New(respObj.Error)
+		return fmt.Errorf("%w: %s", ErrRPCResponse, respObj.Error)
 	}
-
 	return nil
 }
 
@@ -150,74 +144,23 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler 
 		if msg == nil {
 			return
 		}
+		rpcCtx := newRpcContext(ctx, msg, info.options)
 
-		writer := func(obj *marshaller.MarshalObject, headers nats.Header) error {
-			if msg.Reply == "" {
-				return errors.New("rpc call without reply subject")
-			}
-
-			data, err := info.options.Marshaller.Marshall(obj)
-			if err != nil {
-				return err
-			}
-
-			resp := nats.NewMsg(msg.Reply)
-			resp.Data = data
-			if len(headers) > 0 {
-				resp.Header = cloneHeader(headers)
-			}
-
-			return msg.RespondMsg(resp)
-		}
-
-		rpcCtx := newRpcContext(ctx, msg, info.options.Marshaller, writer)
-
-		ctxImpl, _ := rpcCtx.(*rpcContextImpl)
-
-		if err := handler(rpcCtx); err != nil {
-			if ctxImpl != nil && !ctxImpl.hasResponse() {
-				if werr := ctxImpl.writeError(err); werr != nil && !errors.Is(werr, errResponseAlreadyWritten) {
-					// ignore marshalling error, will trigger NAK
-				}
-			}
-
-			if ctxImpl != nil && ctxImpl.hasResponse() {
-				ackMsg(msg)
-				return
-			}
-
-			nakMsg(msg)
+		err := handler(rpcCtx)
+		if rpcCtx.responseWritten() {
+			msg.Ack()
 			return
 		}
 
-		if ctxImpl != nil && ctxImpl.hasResponse() {
-			ackMsg(msg)
-			return
+		if err == nil {
+			// if no error, repond with empty data
+			err = rpcCtx.Ok(nil)
 		}
-
-		if err := rpcCtx.Ok(nil); err != nil {
-			if errors.Is(err, errResponseAlreadyWritten) {
-				ackMsg(msg)
-				return
-			}
-
-			if ctxImpl != nil {
-				_ = ctxImpl.writeError(err)
-			}
-
-			nakMsg(msg)
-			return
+		if err != nil {
+			// Got an error, respond with error
+			rpcCtx.writeError(err)
 		}
-
-		ackMsg(msg)
 	}
-}
-
-func (r *natsRpcImpl) trackSubscription(sub *nats.Subscription) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.subs = append(r.subs, sub)
 }
 
 func (r *natsRpcImpl) cleanupSubscriptions() {
@@ -229,18 +172,4 @@ func (r *natsRpcImpl) cleanupSubscriptions() {
 	for _, sub := range subs {
 		_ = sub.Drain()
 	}
-}
-
-func ackMsg(msg *nats.Msg) {
-	if msg == nil {
-		return
-	}
-	_ = msg.Ack()
-}
-
-func nakMsg(msg *nats.Msg) {
-	if msg == nil {
-		return
-	}
-	_ = msg.Nak()
 }

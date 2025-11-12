@@ -14,7 +14,7 @@ type NatsRPC interface {
 	RPCRouter
 
 	StartWithContext(ctx context.Context) error
-	CallRPC(subj string, request any, response any, opts CallOptions) error
+	CallRPC(ctx context.Context, subj string, request any, response any, opts CallOptions) error
 }
 
 type RPCRouter interface {
@@ -33,6 +33,10 @@ type RPCContext interface {
 
 	RequestHeaders() nats.Header
 	Headers() nats.Header
+
+	responseWritten() bool
+
+	writeError(err error) error
 }
 
 type HandlerOptions struct {
@@ -41,4 +45,5 @@ type HandlerOptions struct {
 
 type CallOptions struct {
 	Marshaller marshaller.PayloadMarshaller
+	Headers    map[string][]string
 }

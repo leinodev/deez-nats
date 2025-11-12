@@ -50,7 +50,7 @@ func main() {
 	}
 
 	var response protocoljson.MyResponse
-	if err := rpcService.CallRPC("test", protocoljson.MyRequst{UserID: "42"}, &response, rpc.CallOptions{}); err != nil {
+	if err := rpcService.CallRPC(ctx, "test", protocoljson.MyRequst{UserID: "42"}, &response, rpc.CallOptions{}); err != nil {
 		log.Printf("rpc call test: %v", err)
 	}
 

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.30.2
-// source: example/simple/marshaller/protocol.proto
+// source: marshaller/protocol.proto
 
 package marshaller
 
@@ -26,14 +26,13 @@ type ProtobufWrap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Data          *anypb.Any             `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	Headers       map[string]string      `protobuf:"bytes,3,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProtobufWrap) Reset() {
 	*x = ProtobufWrap{}
-	mi := &file_example_simple_marshaller_protocol_proto_msgTypes[0]
+	mi := &file_marshaller_protocol_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +44,7 @@ func (x *ProtobufWrap) String() string {
 func (*ProtobufWrap) ProtoMessage() {}
 
 func (x *ProtobufWrap) ProtoReflect() protoreflect.Message {
-	mi := &file_example_simple_marshaller_protocol_proto_msgTypes[0]
+	mi := &file_marshaller_protocol_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +57,7 @@ func (x *ProtobufWrap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtobufWrap.ProtoReflect.Descriptor instead.
 func (*ProtobufWrap) Descriptor() ([]byte, []int) {
-	return file_example_simple_marshaller_protocol_proto_rawDescGZIP(), []int{0}
+	return file_marshaller_protocol_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ProtobufWrap) GetData() *anypb.Any {
@@ -75,13 +74,6 @@ func (x *ProtobufWrap) GetError() string {
 	return ""
 }
 
-func (x *ProtobufWrap) GetHeaders() map[string]string {
-	if x != nil {
-		return x.Headers
-	}
-	return nil
-}
-
 type ProtobufTestMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -92,7 +84,7 @@ type ProtobufTestMessage struct {
 
 func (x *ProtobufTestMessage) Reset() {
 	*x = ProtobufTestMessage{}
-	mi := &file_example_simple_marshaller_protocol_proto_msgTypes[1]
+	mi := &file_marshaller_protocol_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -104,7 +96,7 @@ func (x *ProtobufTestMessage) String() string {
 func (*ProtobufTestMessage) ProtoMessage() {}
 
 func (x *ProtobufTestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_example_simple_marshaller_protocol_proto_msgTypes[1]
+	mi := &file_marshaller_protocol_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -117,7 +109,7 @@ func (x *ProtobufTestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtobufTestMessage.ProtoReflect.Descriptor instead.
 func (*ProtobufTestMessage) Descriptor() ([]byte, []int) {
-	return file_example_simple_marshaller_protocol_proto_rawDescGZIP(), []int{1}
+	return file_marshaller_protocol_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ProtobufTestMessage) GetName() string {
@@ -134,19 +126,15 @@ func (x *ProtobufTestMessage) GetData() map[string]string {
 	return nil
 }
 
-var File_example_simple_marshaller_protocol_proto protoreflect.FileDescriptor
+var File_marshaller_protocol_proto protoreflect.FileDescriptor
 
-const file_example_simple_marshaller_protocol_proto_rawDesc = "" +
+const file_marshaller_protocol_proto_rawDesc = "" +
 	"\n" +
-	"(example/simple/marshaller/protocol.proto\x12\n" +
-	"marshaller\x1a\x19google/protobuf/any.proto\"\xcb\x01\n" +
+	"\x19marshaller/protocol.proto\x12\n" +
+	"marshaller\x1a\x19google/protobuf/any.proto\"N\n" +
 	"\fProtobufWrap\x12(\n" +
 	"\x04data\x18\x01 \x01(\v2\x14.google.protobuf.AnyR\x04data\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\x12?\n" +
-	"\aheaders\x18\x03 \x03(\v2%.marshaller.ProtobufWrap.HeadersEntryR\aheaders\x1a:\n" +
-	"\fHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa1\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xa1\x01\n" +
 	"\x13ProtobufTestMessage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\x04data\x18\x02 \x03(\v2).marshaller.ProtobufTestMessage.DataEntryR\x04data\x1a7\n" +
@@ -155,56 +143,54 @@ const file_example_simple_marshaller_protocol_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0fZ\r./;marshallerb\x06proto3"
 
 var (
-	file_example_simple_marshaller_protocol_proto_rawDescOnce sync.Once
-	file_example_simple_marshaller_protocol_proto_rawDescData []byte
+	file_marshaller_protocol_proto_rawDescOnce sync.Once
+	file_marshaller_protocol_proto_rawDescData []byte
 )
 
-func file_example_simple_marshaller_protocol_proto_rawDescGZIP() []byte {
-	file_example_simple_marshaller_protocol_proto_rawDescOnce.Do(func() {
-		file_example_simple_marshaller_protocol_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_example_simple_marshaller_protocol_proto_rawDesc), len(file_example_simple_marshaller_protocol_proto_rawDesc)))
+func file_marshaller_protocol_proto_rawDescGZIP() []byte {
+	file_marshaller_protocol_proto_rawDescOnce.Do(func() {
+		file_marshaller_protocol_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_marshaller_protocol_proto_rawDesc), len(file_marshaller_protocol_proto_rawDesc)))
 	})
-	return file_example_simple_marshaller_protocol_proto_rawDescData
+	return file_marshaller_protocol_proto_rawDescData
 }
 
-var file_example_simple_marshaller_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
-var file_example_simple_marshaller_protocol_proto_goTypes = []any{
+var file_marshaller_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_marshaller_protocol_proto_goTypes = []any{
 	(*ProtobufWrap)(nil),        // 0: marshaller.ProtobufWrap
 	(*ProtobufTestMessage)(nil), // 1: marshaller.ProtobufTestMessage
-	nil,                         // 2: marshaller.ProtobufWrap.HeadersEntry
-	nil,                         // 3: marshaller.ProtobufTestMessage.DataEntry
-	(*anypb.Any)(nil),           // 4: google.protobuf.Any
+	nil,                         // 2: marshaller.ProtobufTestMessage.DataEntry
+	(*anypb.Any)(nil),           // 3: google.protobuf.Any
 }
-var file_example_simple_marshaller_protocol_proto_depIdxs = []int32{
-	4, // 0: marshaller.ProtobufWrap.data:type_name -> google.protobuf.Any
-	2, // 1: marshaller.ProtobufWrap.headers:type_name -> marshaller.ProtobufWrap.HeadersEntry
-	3, // 2: marshaller.ProtobufTestMessage.data:type_name -> marshaller.ProtobufTestMessage.DataEntry
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+var file_marshaller_protocol_proto_depIdxs = []int32{
+	3, // 0: marshaller.ProtobufWrap.data:type_name -> google.protobuf.Any
+	2, // 1: marshaller.ProtobufTestMessage.data:type_name -> marshaller.ProtobufTestMessage.DataEntry
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_example_simple_marshaller_protocol_proto_init() }
-func file_example_simple_marshaller_protocol_proto_init() {
-	if File_example_simple_marshaller_protocol_proto != nil {
+func init() { file_marshaller_protocol_proto_init() }
+func file_marshaller_protocol_proto_init() {
+	if File_marshaller_protocol_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_example_simple_marshaller_protocol_proto_rawDesc), len(file_example_simple_marshaller_protocol_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_marshaller_protocol_proto_rawDesc), len(file_marshaller_protocol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_example_simple_marshaller_protocol_proto_goTypes,
-		DependencyIndexes: file_example_simple_marshaller_protocol_proto_depIdxs,
-		MessageInfos:      file_example_simple_marshaller_protocol_proto_msgTypes,
+		GoTypes:           file_marshaller_protocol_proto_goTypes,
+		DependencyIndexes: file_marshaller_protocol_proto_depIdxs,
+		MessageInfos:      file_marshaller_protocol_proto_msgTypes,
 	}.Build()
-	File_example_simple_marshaller_protocol_proto = out.File
-	file_example_simple_marshaller_protocol_proto_goTypes = nil
-	file_example_simple_marshaller_protocol_proto_depIdxs = nil
+	File_marshaller_protocol_proto = out.File
+	file_marshaller_protocol_proto_goTypes = nil
+	file_marshaller_protocol_proto_depIdxs = nil
 }
