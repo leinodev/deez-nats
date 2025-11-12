@@ -21,7 +21,7 @@ jobs:
           --health-cmd="wget -q --spider http://localhost:8222/varz || exit 1"
           --health-interval=5s --health-timeout=5s --health-start-period=5s
           --health-retries=12
-          --entrypoint="nats-server -js --http_port 8222"
+          --entrypoint="/usr/local/bin/nats-server -js --http_port 8222"
 
     steps:
       - name: Checkout
