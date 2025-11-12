@@ -1,4 +1,4 @@
-package natsrpcgo
+package events
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 
@@ -15,7 +15,7 @@ type Events interface {
 	EventRouter
 
 	StartWithContext(ctx context.Context) error
-	Publish(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
+	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
 }
 
 type EventsOption func(*natsEventsImpl)
@@ -268,7 +268,7 @@ func (e *natsEventsImpl) wrapMsgHandler(ctx context.Context, info eventInfo, han
 	}
 }
 
-func (e *natsEventsImpl) Publish(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error {
+func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error {
 	if subject == "" {
 		return errors.New("empty subject")
 	}

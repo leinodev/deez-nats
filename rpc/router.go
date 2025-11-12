@@ -1,4 +1,6 @@
-package natsrpcgo
+package rpc
+
+import "github.com/leinodev/deez-nats/internal/router"
 
 type RPCRouter interface {
 	Use(middlewares ...RpcMiddlewareFunc)
@@ -16,17 +18,17 @@ type rpcInfo struct {
 }
 
 type rpcRouterImpl struct {
-	base *routerBase[RpcHandleFunc, RpcMiddlewareFunc, HandlerOptions]
+	base *router.Base[RpcHandleFunc, RpcMiddlewareFunc, HandlerOptions]
 }
 
 func newRouter(groupName string, defaultOpts HandlerOptions) RPCRouter {
 	return &rpcRouterImpl{
-		base: newRouterBase[RpcHandleFunc, RpcMiddlewareFunc, HandlerOptions](groupName, defaultOpts),
+		base: router.NewBase[RpcHandleFunc, RpcMiddlewareFunc, HandlerOptions](groupName, defaultOpts),
 	}
 }
 
 func (r *rpcRouterImpl) Use(middlewares ...RpcMiddlewareFunc) {
-	r.base.use(middlewares...)
+	r.base.Use(middlewares...)
 }
 
 func (r *rpcRouterImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts *HandlerOptions, middlewares ...RpcMiddlewareFunc) {
@@ -34,28 +36,28 @@ func (r *rpcRouterImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts
 		panic("empty rpc method name")
 	}
 
-	options := r.base.defaultOpts
+	options := r.base.DefaultOptions()
 	if opts != nil {
 		options = *opts
 	}
 
-	r.base.add(method, handler, options, middlewares...)
+	r.base.Add(method, handler, options, middlewares...)
 }
 
 func (r *rpcRouterImpl) Group(group string) RPCRouter {
-	child := r.base.child(group)
+	child := r.base.Child(group)
 	return &rpcRouterImpl{base: child}
 }
 
 func (r *rpcRouterImpl) dfs() []rpcInfo {
-	records := r.base.dfs()
+	records := r.base.DFS()
 	routes := make([]rpcInfo, 0, len(records))
 	for _, rec := range records {
 		routes = append(routes, rpcInfo{
-			method:      rec.name,
-			handler:     rec.handler,
-			options:     rec.options,
-			middlewares: rec.middlewares,
+			method:      rec.Name,
+			handler:     rec.Handler,
+			options:     rec.Options,
+			middlewares: rec.Middlewares,
 		})
 	}
 	return routes

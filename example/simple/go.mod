@@ -3,7 +3,7 @@ module simple
 go 1.25.1
 
 require (
-	github.com/TexHik620953/natsrpc-go v0.0.0-00010101000000-000000000000 // indirect
+	github.com/leinodev/deez-nats v0.0.0-00010101000000-000000000000 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/nats-io/nats.go v1.47.0 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
@@ -13,4 +13,4 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 )
 
-replace github.com/TexHik620953/natsrpc-go => ../../
+replace github.com/leinodev/deez-nats => ../../

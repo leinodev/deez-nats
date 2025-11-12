@@ -3,7 +3,7 @@ package marshaller_test
 import (
 	"testing"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 )
 
 func TestProto(t *testing.T) {

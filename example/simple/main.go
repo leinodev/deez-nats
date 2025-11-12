@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/leinodev/deez-nats/rpc"
 )
 
 func main() {
@@ -18,26 +20,38 @@ func main() {
 	}
 	defer nc.Close()
 
-	events := NewEventRouter(nc)
+	eventService := NewEventRouter(nc)
+	rpcService := NewRpcRouter(nc)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := events.StartWithContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := eventService.StartWithContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("events stopped with error: %v", err)
 		}
 	}()
 
+	go func() {
+		if err := rpcService.StartWithContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("rpc stopped with error: %v", err)
+		}
+	}()
+
 	// Emit example events
-	err = events.Publish(ctx, "entity.created", protocoljson.EntityEvent{ID: "42", Name: "example"}, nil)
+	err = eventService.Emit(ctx, "entity.created", protocoljson.EntityEvent{ID: "42", Name: "example"}, nil)
 	if err != nil {
 		log.Printf("publish entity.created: %v", err)
 	}
 
-	err = events.Publish(ctx, "entity.updated", protocoljson.EntityEvent{ID: "42", Name: "example-renamed"}, nil)
+	err = eventService.Emit(ctx, "entity.updated", protocoljson.EntityEvent{ID: "42", Name: "example-renamed"}, nil)
 	if err != nil {
 		log.Printf("publish entity.updated: %v", err)
+	}
+
+	var response protocoljson.MyResponse
+	if err := rpcService.CallRPC("test", protocoljson.MyRequst{UserID: "42"}, &response, rpc.CallOptions{}); err != nil {
+		log.Printf("rpc call test: %v", err)
 	}
 
 	time.Sleep(2 * time.Second)

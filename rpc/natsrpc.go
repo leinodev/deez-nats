@@ -1,4 +1,4 @@
-package natsrpcgo
+package rpc
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 

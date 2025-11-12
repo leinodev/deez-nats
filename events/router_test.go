@@ -1,10 +1,10 @@
-package natsrpcgo
+package events
 
 import (
 	"slices"
 	"testing"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 )
 
 func TestEventRouterDFS(t *testing.T) {

@@ -1,10 +1,10 @@
-package natsrpcgo
+package rpc
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 )
 
 func TestRouterDFS(t *testing.T) {

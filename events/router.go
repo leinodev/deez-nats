@@ -1,6 +1,9 @@
-package natsrpcgo
+package events
 
-import "github.com/TexHik620953/natsrpc-go/marshaller"
+import (
+	"github.com/leinodev/deez-nats/internal/router"
+	"github.com/leinodev/deez-nats/marshaller"
+)
 
 type EventHandleFunc func(EventContext) error
 type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
@@ -21,7 +24,7 @@ type eventInfo struct {
 }
 
 type eventRouterImpl struct {
-	base *routerBase[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions]
+	base *router.Base[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions]
 }
 
 func newEventRouter(groupName string, defaultOpts EventHandlerOptions) EventRouter {
@@ -30,12 +33,12 @@ func newEventRouter(groupName string, defaultOpts EventHandlerOptions) EventRout
 	}
 
 	return &eventRouterImpl{
-		base: newRouterBase[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions](groupName, defaultOpts),
+		base: router.NewBase[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions](groupName, defaultOpts),
 	}
 }
 
 func (r *eventRouterImpl) Use(middlewares ...EventMiddlewareFunc) {
-	r.base.use(middlewares...)
+	r.base.Use(middlewares...)
 }
 
 func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc) {
@@ -43,15 +46,17 @@ func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFun
 		panic("empty event subject name")
 	}
 
-	options := r.base.defaultOpts
-	if options.Marshaller == nil {
-		options.Marshaller = marshaller.DefaultJsonMarshaller
+	defaultOpts := r.base.DefaultOptions()
+	if defaultOpts.Marshaller == nil {
+		defaultOpts.Marshaller = marshaller.DefaultJsonMarshaller
 	}
+
+	options := defaultOpts
 
 	if opts != nil {
 		options = *opts
 		if options.Marshaller == nil {
-			options.Marshaller = r.base.defaultOpts.Marshaller
+			options.Marshaller = defaultOpts.Marshaller
 		}
 		if !opts.JetStream.Enabled {
 			options.JetStream = JetStreamEventOptions{}
@@ -62,23 +67,23 @@ func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFun
 		options.Marshaller = marshaller.DefaultJsonMarshaller
 	}
 
-	r.base.add(subject, handler, options, middlewares...)
+	r.base.Add(subject, handler, options, middlewares...)
 }
 
 func (r *eventRouterImpl) Group(group string) EventRouter {
-	child := r.base.child(group)
+	child := r.base.Child(group)
 	return &eventRouterImpl{base: child}
 }
 
 func (r *eventRouterImpl) dfs() []eventInfo {
-	records := r.base.dfs()
+	records := r.base.DFS()
 	routes := make([]eventInfo, 0, len(records))
 	for _, rec := range records {
 		routes = append(routes, eventInfo{
-			subject:     rec.name,
-			handler:     rec.handler,
-			options:     rec.options,
-			middlewares: rec.middlewares,
+			subject:     rec.Name,
+			handler:     rec.Handler,
+			options:     rec.Options,
+			middlewares: rec.Middlewares,
 		})
 	}
 	return routes

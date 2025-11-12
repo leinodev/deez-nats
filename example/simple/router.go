@@ -4,34 +4,36 @@ import (
 	"fmt"
 	"simple/protocoljson"
 
-	natsrpcgo "github.com/TexHik620953/natsrpc-go"
 	"github.com/nats-io/nats.go"
+
+	"github.com/leinodev/deez-nats/events"
+	"github.com/leinodev/deez-nats/rpc"
 )
 
-func NewRpcRouter(nc *nats.Conn) natsrpcgo.NatsRPC {
-	rpc := natsrpcgo.NewNatsRPC(nc)
+func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
+	r := rpc.NewNatsRPC(nc)
 
-	rpc.AddRPCHandler("test", testHandler, nil)
-	rpc.AddRPCHandler("sraka", test1Handler, nil)
+	r.AddRPCHandler("test", testHandler, nil)
+	r.AddRPCHandler("sraka", test1Handler, nil)
 
-	return rpc
+	return r
 }
 
-func NewEventRouter(nc *nats.Conn) natsrpcgo.Events {
-	events := natsrpcgo.NewEvents(nc,
-		natsrpcgo.WithEventDefaultHandlerOptions(natsrpcgo.EventHandlerOptions{
+func NewEventRouter(nc *nats.Conn) events.Events {
+	e := events.NewEvents(nc,
+		events.WithEventDefaultHandlerOptions(events.EventHandlerOptions{
 			Queue: "",
-			JetStream: natsrpcgo.JetStreamEventOptions{
+			JetStream: events.JetStreamEventOptions{
 				Enabled: true,
 				AutoAck: true,
 			},
 		}),
 	)
 
-	events.Use(eventLoggingMiddleware)
+	e.Use(eventLoggingMiddleware)
 
-	events.AddEventHandler("entity.created", entityCreatedHandler, &natsrpcgo.EventHandlerOptions{
-		JetStream: natsrpcgo.JetStreamEventOptions{
+	e.AddEventHandler("entity.created", entityCreatedHandler, &events.EventHandlerOptions{
+		JetStream: events.JetStreamEventOptions{
 			Enabled:      true,
 			AutoAck:      true,
 			Durable:      "entity-created-consumer",
@@ -39,16 +41,16 @@ func NewEventRouter(nc *nats.Conn) natsrpcgo.Events {
 		},
 	})
 
-	events.AddEventHandler("entity.updated", entityUpdatedHandler, nil)
+	e.AddEventHandler("entity.updated", entityUpdatedHandler, nil)
 
-	return events
+	return e
 }
 
-func testHandler(c natsrpcgo.RPCContext) error {
+func testHandler(c rpc.RPCContext) error {
 	return nil
 }
 
-func test1Handler(c natsrpcgo.RPCContext) error {
+func test1Handler(c rpc.RPCContext) error {
 	var msg protocoljson.MyRequst
 	err := c.Request(&msg)
 	if err != nil {
@@ -57,14 +59,14 @@ func test1Handler(c natsrpcgo.RPCContext) error {
 	return nil
 }
 
-func eventLoggingMiddleware(next natsrpcgo.EventHandleFunc) natsrpcgo.EventHandleFunc {
-	return func(ctx natsrpcgo.EventContext) error {
+func eventLoggingMiddleware(next events.EventHandleFunc) events.EventHandleFunc {
+	return func(ctx events.EventContext) error {
 		fmt.Printf("received event %s\n", ctx.Message().Subject)
 		return next(ctx)
 	}
 }
 
-func entityCreatedHandler(ctx natsrpcgo.EventContext) error {
+func entityCreatedHandler(ctx events.EventContext) error {
 	var payload protocoljson.EntityEvent
 
 	if err := ctx.Event(&payload); err != nil {
@@ -75,7 +77,7 @@ func entityCreatedHandler(ctx natsrpcgo.EventContext) error {
 	return nil
 }
 
-func entityUpdatedHandler(ctx natsrpcgo.EventContext) error {
+func entityUpdatedHandler(ctx events.EventContext) error {
 	var payload protocoljson.EntityEvent
 
 	if err := ctx.Event(&payload); err != nil {

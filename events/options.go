@@ -1,19 +1,11 @@
-package natsrpcgo
+package events
 
 import (
 	"time"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
-
-type HandlerOptions struct {
-	Marshaller marshaller.PayloadMarshaller
-}
-
-type CallOptions struct {
-	Marshaller marshaller.PayloadMarshaller
-}
 
 type EventHandlerOptions struct {
 	Marshaller marshaller.PayloadMarshaller

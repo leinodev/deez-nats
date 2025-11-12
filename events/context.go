@@ -1,10 +1,10 @@
-package natsrpcgo
+package events
 
 import (
 	"context"
 	"time"
 
-	"github.com/TexHik620953/natsrpc-go/marshaller"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 
