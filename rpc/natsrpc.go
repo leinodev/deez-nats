@@ -30,6 +30,7 @@ type natsRpcImpl struct {
 }
 
 // TODO: Add options builder
+// TODO: Add logger
 func NewNatsRPC(nc *nats.Conn, baseRoute string) NatsRPC {
 	defaultHandler := HandlerOptions{
 		Marshaller: marshaller.DefaultJsonMarshaller,
@@ -149,7 +150,7 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler 
 
 		err := handler(rpcCtx)
 		if rpcCtx.responseWritten() {
-			msg.Ack()
+			_ = msg.Ack()
 			return
 		}
 
@@ -159,7 +160,7 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler 
 		}
 		if err != nil {
 			// Got an error, respond with error
-			rpcCtx.writeError(err)
+			_ = rpcCtx.writeError(err)
 		}
 	}
 }
