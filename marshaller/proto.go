@@ -50,7 +50,14 @@ func (*protoPayloadMarshaller) Unmarshall(data []byte, v *MarshalObject) error {
 	}
 
 	if anyTarget, ok := v.Data.(*anypb.Any); ok {
-		*anyTarget = *wrap.Data
+		if anyTarget == nil {
+			return ErrProtoInvalidMessage
+		}
+		anyTarget.Reset()
+		if wrap.Data != nil {
+			anyTarget.TypeUrl = wrap.Data.TypeUrl
+			anyTarget.Value = append(anyTarget.Value[:0], wrap.Data.Value...)
+		}
 	} else if protoTarget, ok := v.Data.(proto.Message); ok {
 		if wrap.Data != nil {
 			if err := wrap.Data.UnmarshalTo(protoTarget); err != nil {
