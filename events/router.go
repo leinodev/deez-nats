@@ -5,17 +5,6 @@ import (
 	"github.com/leinodev/deez-nats/marshaller"
 )
 
-type EventHandleFunc func(EventContext) error
-type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
-
-type EventRouter interface {
-	Use(middlewares ...EventMiddlewareFunc)
-	AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc)
-	Group(group string) EventRouter
-
-	dfs() []eventInfo
-}
-
 type eventInfo struct {
 	subject     string
 	handler     EventHandleFunc
@@ -33,7 +22,7 @@ func newEventRouter(groupName string, defaultOpts EventHandlerOptions) EventRout
 	}
 
 	return &eventRouterImpl{
-		base: router.NewBase[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions](groupName, defaultOpts),
+		base: router.NewBase[EventHandleFunc, EventMiddlewareFunc](groupName, defaultOpts),
 	}
 }
 

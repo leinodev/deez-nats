@@ -2,14 +2,6 @@ package rpc
 
 import "github.com/leinodev/deez-nats/internal/router"
 
-type RPCRouter interface {
-	Use(middlewares ...RpcMiddlewareFunc)
-	AddRPCHandler(method string, handler RpcHandleFunc, opts *HandlerOptions, middlewares ...RpcMiddlewareFunc)
-	Group(group string) RPCRouter
-
-	dfs() []rpcInfo
-}
-
 type rpcInfo struct {
 	method      string
 	handler     RpcHandleFunc
@@ -23,7 +15,7 @@ type rpcRouterImpl struct {
 
 func newRouter(groupName string, defaultOpts HandlerOptions) RPCRouter {
 	return &rpcRouterImpl{
-		base: router.NewBase[RpcHandleFunc, RpcMiddlewareFunc, HandlerOptions](groupName, defaultOpts),
+		base: router.NewBase[RpcHandleFunc, RpcMiddlewareFunc](groupName, defaultOpts),
 	}
 }
 

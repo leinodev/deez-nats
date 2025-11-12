@@ -11,15 +11,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type Events interface {
-	EventRouter
-
-	StartWithContext(ctx context.Context) error
-	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
-}
-
-type EventsOption func(*natsEventsImpl)
-
 func WithEventDefaultHandlerOptions(opts EventHandlerOptions) EventsOption {
 	return func(e *natsEventsImpl) {
 		e.defaultHandlerOpts = opts

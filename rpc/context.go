@@ -11,16 +11,6 @@ import (
 
 var errResponseAlreadyWritten = errors.New("rpc response already written")
 
-type RPCContext interface {
-	context.Context
-	Request(data any) error
-
-	Ok(data any) error
-
-	RequestHeaders() nats.Header
-	Headers() nats.Header
-}
-
 func newRpcContext(parent context.Context, msg *nats.Msg, m marshaller.PayloadMarshaller, writer func(*marshaller.MarshalObject, nats.Header) error) RPCContext {
 	if parent == nil {
 		parent = context.Background()

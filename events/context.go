@@ -8,19 +8,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type EventContext interface {
-	context.Context
-	Event(data any) error
-
-	Headers() nats.Header
-	Message() *nats.Msg
-
-	Ack(opts ...nats.AckOpt) error
-	Nak(opts ...nats.AckOpt) error
-	Term(opts ...nats.AckOpt) error
-	InProgress(opts ...nats.AckOpt) error
-}
-
 func newEventContext(parent context.Context, msg *nats.Msg, m marshaller.PayloadMarshaller) EventContext {
 	if parent == nil {
 		parent = context.Background()

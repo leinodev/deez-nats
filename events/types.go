@@ -1,0 +1,66 @@
+package events
+
+import (
+	"context"
+	"time"
+
+	"github.com/leinodev/deez-nats/marshaller"
+	"github.com/nats-io/nats.go"
+)
+
+type Events interface {
+	EventRouter
+
+	StartWithContext(ctx context.Context) error
+	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
+}
+
+type EventsOption func(*natsEventsImpl)
+
+type EventHandleFunc func(EventContext) error
+type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
+
+type EventRouter interface {
+	Use(middlewares ...EventMiddlewareFunc)
+	AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc)
+	Group(group string) EventRouter
+
+	dfs() []eventInfo
+}
+
+type EventContext interface {
+	context.Context
+	Event(data any) error
+
+	Headers() nats.Header
+	Message() *nats.Msg
+
+	Ack(opts ...nats.AckOpt) error
+	Nak(opts ...nats.AckOpt) error
+	Term(opts ...nats.AckOpt) error
+	InProgress(opts ...nats.AckOpt) error
+}
+
+type EventHandlerOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Queue      string
+	JetStream  JetStreamEventOptions
+}
+
+type JetStreamEventOptions struct {
+	Enabled          bool
+	AutoAck          bool
+	Pull             bool
+	PullBatch        int
+	PullExpire       time.Duration
+	Durable          string
+	DeliverGroup     string
+	SubjectTransform func(subject string) string
+	SubscribeOptions []nats.SubOpt
+}
+
+type EventPublishOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Headers    map[string]string
+	JetStream  []nats.PubOpt
+}

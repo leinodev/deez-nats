@@ -11,16 +11,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type RpcHandleFunc = func(c RPCContext) error
-type RpcMiddlewareFunc = func(next RpcHandleFunc) RpcHandleFunc
-
-type NatsRPC interface {
-	RPCRouter
-
-	StartWithContext(ctx context.Context) error
-	CallRPC(subj string, request any, response any, opts CallOptions) error
-}
-
 type natsRpcImpl struct {
 	nc *nats.Conn
 
