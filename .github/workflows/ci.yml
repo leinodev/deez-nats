@@ -10,18 +10,6 @@ jobs:
   lint-and-test:
     name: Lint и тесты
     runs-on: ubuntu-latest
-    services:
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-          - 8222:8222
-        options: >-
-          --tmpfs /data/jetstream
-          --health-cmd="wget -q --spider http://localhost:8222/varz || exit 1"
-          --health-interval=5s --health-timeout=5s --health-start-period=5s
-          --health-retries=12
-          --entrypoint="/usr/local/bin/nats-server -js --http_port 8222"
 
     steps:
       - name: Checkout
@@ -51,7 +39,15 @@ jobs:
           version: v2.4
           args: --timeout=5m
 
+      - name: run jetstream
+        run: |
+          docker run --name nats-server -p 4222:4222 -p 8222:8222 -d nats:2.12.0 -js --http_port 8222
+
       - name: Тесты
         env:
           NATS_URL: nats://localhost:4222
         run: go test ./...
+
+      - name: stop jetstream
+        run: docker stop nats-server
+        if: always()
