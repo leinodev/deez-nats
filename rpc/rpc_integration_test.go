@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/leinodev/deez-nats/internal/testutil"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
 
@@ -92,6 +94,113 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 	}
 }
 
+func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	method := fmt.Sprintf("integration.typed.add.%d", time.Now().UnixNano())
+
+	rpcServer := NewNatsRPC(nc)
+	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
+		return addResponse{Sum: request.A + request.B}, nil
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- rpcServer.StartWithContext(ctx)
+	}()
+
+	waitForRPCSubscriptions(t, nc)
+
+	var resp addResponse
+	if err := rpcServer.CallRPC(method, addRequest{A: 5, B: 7}, &resp, CallOptions{}); err != nil {
+		t.Fatalf("вызов typed RPC: %v", err)
+	}
+	if resp.Sum != 12 {
+		t.Fatalf("неожиданная сумма: %d", resp.Sum)
+	}
+
+	cancel()
+
+	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+	}
+}
+
+func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	method := fmt.Sprintf("integration.typed.fail.%d", time.Now().UnixNano())
+
+	rpcServer := NewNatsRPC(nc)
+	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
+		return addResponse{}, errors.New("typed handler failure")
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- rpcServer.StartWithContext(ctx)
+	}()
+
+	waitForRPCSubscriptions(t, nc)
+
+	var resp addResponse
+	err := rpcServer.CallRPC(method, addRequest{A: 1, B: 2}, &resp, CallOptions{})
+	if err == nil {
+		t.Fatal("ожидалась ошибка от typed обработчика, но CallRPC завершился успешно")
+	}
+
+	cancel()
+
+	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+	}
+}
+
+func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	method := fmt.Sprintf("integration.typed.marshaller.%d", time.Now().UnixNano())
+
+	recMarshaller := newRecordingMarshaller(nil)
+
+	rpcServer := NewNatsRPC(nc)
+	AddTypedRPCHandlerWithMarshaller(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
+		return addResponse{Sum: request.A + request.B}, nil
+	}, recMarshaller)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- rpcServer.StartWithContext(ctx)
+	}()
+
+	waitForRPCSubscriptions(t, nc)
+
+	var resp addResponse
+	if err := rpcServer.CallRPC(method, addRequest{A: 20, B: 22}, &resp, CallOptions{Marshaller: recMarshaller}); err != nil {
+		t.Fatalf("вызов typed RPC с кастомным маршаллером: %v", err)
+	}
+	if resp.Sum != 42 {
+		t.Fatalf("неожиданная сумма: %d", resp.Sum)
+	}
+
+	marshalCount, unmarshalCount := recMarshaller.counts()
+	if marshalCount < 2 {
+		t.Fatalf("ожидалось минимум два вызова Marshall, получено: %d", marshalCount)
+	}
+	if unmarshalCount < 2 {
+		t.Fatalf("ожидалось минимум два вызова Unmarshall, получено: %d", unmarshalCount)
+	}
+
+	cancel()
+
+	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+	}
+}
+
 func waitForRPCSubscriptions(t *testing.T, nc *nats.Conn) {
 	t.Helper()
 
@@ -104,4 +213,39 @@ func waitForRPCSubscriptions(t *testing.T, nc *nats.Conn) {
 	}
 
 	t.Fatal("не удалось дождаться регистрации RPC обработчиков")
+}
+
+type recordingMarshaller struct {
+	inner marshaller.PayloadMarshaller
+
+	mu             sync.Mutex
+	marshalCount   int
+	unmarshalCount int
+}
+
+func newRecordingMarshaller(inner marshaller.PayloadMarshaller) *recordingMarshaller {
+	if inner == nil {
+		inner = marshaller.DefaultJsonMarshaller
+	}
+	return &recordingMarshaller{inner: inner}
+}
+
+func (r *recordingMarshaller) Marshall(v *marshaller.MarshalObject) ([]byte, error) {
+	r.mu.Lock()
+	r.marshalCount++
+	r.mu.Unlock()
+	return r.inner.Marshall(v)
+}
+
+func (r *recordingMarshaller) Unmarshall(data []byte, v *marshaller.MarshalObject) error {
+	r.mu.Lock()
+	r.unmarshalCount++
+	r.mu.Unlock()
+	return r.inner.Unmarshall(data, v)
+}
+
+func (r *recordingMarshaller) counts() (int, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.marshalCount, r.unmarshalCount
 }
