@@ -11,6 +11,12 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+const (
+	defaultPullBatchSize    = 1
+	defaultPullFetchMaxWait = time.Second
+	defaultPullRetryDelay   = 100 * time.Millisecond
+)
+
 func WithEventDefaultHandlerOptions(opts EventHandlerOptions) EventsOption {
 	return func(e *natsEventsImpl) {
 		e.defaultHandlerOpts = opts
@@ -198,7 +204,7 @@ func (e *natsEventsImpl) bindEvent(ctx context.Context, info eventInfo) error {
 						}
 
 						// retry after small delay
-						time.Sleep(100 * time.Millisecond)
+						time.Sleep(defaultPullRetryDelay)
 						continue
 					}
 
@@ -206,7 +212,7 @@ func (e *natsEventsImpl) bindEvent(ctx context.Context, info eventInfo) error {
 						msgHandler(msg)
 					}
 				}
-			}(maxInt(info.options.JetStream.PullBatch, 1), defaultDuration(info.options.JetStream.PullExpire, time.Second))
+			}(maxInt(info.options.JetStream.PullBatch, defaultPullBatchSize), defaultDuration(info.options.JetStream.PullExpire, defaultPullFetchMaxWait))
 		} else {
 			var sub *nats.Subscription
 			if info.options.JetStream.DeliverGroup != "" {

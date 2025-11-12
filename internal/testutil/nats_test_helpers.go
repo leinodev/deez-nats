@@ -23,13 +23,13 @@ func ConnectToNATS(t *testing.T) *nats.Conn {
 
 	nc, err := nats.Connect(url, nats.Timeout(2*time.Second))
 	if err != nil {
-		t.Skipf("не удалось подключиться к NATS (%s): %v. Запустите `docker compose up -d nats`", url, err)
+		t.Skipf("failed to connect to NATS (%s): %v. Run `docker compose up -d nats`", url, err)
 	}
 
 	if err := nc.FlushTimeout(2 * time.Second); err != nil {
 		_ = nc.Drain()
 		nc.Close()
-		t.Skipf("нет ответа от NATS (%s): %v. Запустите `docker compose up -d nats`", url, err)
+		t.Skipf("no response from NATS (%s): %v. Run `docker compose up -d nats`", url, err)
 	}
 
 	t.Cleanup(func() {
@@ -45,7 +45,7 @@ func RequireJetStream(t *testing.T, nc *nats.Conn) nats.JetStreamContext {
 
 	js, err := nc.JetStream()
 	if err != nil {
-		t.Skipf("JetStream недоступен: %v", err)
+		t.Skipf("jetstream is unavailable: %v", err)
 	}
 
 	return js

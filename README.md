@@ -1,25 +1,27 @@
 # deez-nats
 
-Утилиты для построения RPC и event-driven приложений поверх [NATS](https://nats.io) на Go. Библиотека объединяет единый роутер для RPC-методов и событий, поддержку middlewares, типизированные обёртки и несколько маршаллизаторов (JSON и Protobuf), чтобы ускорить старт и облегчить поддержку сервиса.
+_[Русская версия документации](README.ru.md)_
 
-## Основные возможности
+Utilities for building RPC and event-driven applications on top of [NATS](https://nats.io) in Go. The library ships with a unified router for RPC methods and events, middleware support, typed helpers, and several marshallers (JSON and Protobuf) to speed up onboarding and simplify long-term maintenance.
 
-- **Единый роутер** с возможностью группировки (`Group`) и наследованием middleware для RPC и событий.
-- **Обработка RPC-запросов** с автоматическим управлением ack/nak и удобным `RPCContext` для чтения запроса, отправки ответа и работы с заголовками.
-- **Event-хэндлеры с JetStream**: очередь / pull-консьюмеры, авто-ack, конфигурация durable и subject transform.
-- **Типизированные обёртки** для RPC (`rpc.AddTyped…`) и событий (`events.AddTyped…`) с поддержкой generics и выбором маршаллизатора.
-- **Гибкие маршаллизаторы**: готовые JSON и Protobuf, возможность подменить на свой.
-- **Примеры** для быстрого старта: простой сценарий и полностью типизированный пайплайн.
+## Features
 
-## Установка
+- **Unified router** with grouping (`Group`) and middleware inheritance for both RPC and events.
+- **RPC handling** with automatic ack/nak management and a convenient `RPCContext` for reading requests, sending responses, and working with headers.
+- **Event handlers with JetStream**: queue / pull consumers, auto-ack, durable configuration, and subject transforms.
+- **Typed helpers** for RPC (`rpc.AddTyped…`) and events (`events.AddTyped…`) with generics support and pluggable marshallers.
+- **Flexible marshallers**: built-in JSON and Protobuf implementations, plus the option to provide your own.
+- **Examples** for a quick start: from a simple scenario to a fully typed pipeline.
+
+## Installation
 
 ```sh
 go get github.com/leinodev/deez-nats
 ```
 
-Требуется Go 1.21+ (модуль собирается с `go 1.25`).
+Requires Go 1.21+ (the module is built with `go 1.25`).
 
-## Быстрый старт
+## Quick Start
 
 ```go
 nc, _ := nats.Connect(nats.DefaultURL)
@@ -58,71 +60,56 @@ _ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
 
 ## RPC
 
-- `rpc.NewNatsRPC` создаёт сервис с дефолтным JSON-маршаллизатором.
-- `AddRPCHandler` иерархически строит дерево маршрутов; можно группировать методы (`Service.Group("user")`).
-- `RPCContext` предоставляет:
-  - `Request(&reqStruct)` — десериализация запроса;
-  - `Ok(response)` — отправка успешного ответа;
-  - `Headers()` и `RequestHeaders()` — работа с заголовками.
-- `CallRPC` инкапсулирует запрос с таймаутом NATS и десериализацией респондов.
-- Для generics используйте `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler` или `AddTypedRPCHandler` с кастомным маршаллизатором.
+- `rpc.NewNatsRPC` creates a service with the default JSON marshaller.
+- `AddRPCHandler` builds a hierarchical route tree; methods can be grouped (`Service.Group("user")`).
+- `RPCContext` offers:
+  - `Request(&reqStruct)` — request deserialization;
+  - `Ok(response)` — sending a successful response;
+  - `Headers()` and `RequestHeaders()` — working with headers.
+- `CallRPC` wraps a request with NATS timeout handling and response deserialization.
+- For generics, use `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler`, or `AddTypedRPCHandler` with your custom marshaller.
 
-## События
+## Events
 
-- `events.NewEvents` создаёт сервис, поддерживающий обычные подписки и JetStream.
-- `AddEventHandler` позволяет указать очередь (`Queue`) и JetStream-настройки: durable, pull, deliver group, subject transform и т.д.
-- Для pull-консьюмеров задайте `JetStream.Pull = true`, `PullBatch`, `PullExpire` и `Durable`.
-- `EventContext` предоставляет:
-  - `Event(&payload)` — десериализация сообщения;
-  - `Ack/Nak/Term/InProgress` — управление delivery в JetStream;
-  - доступ к `Headers()` и исходному `*nats.Msg`.
-- Эмиссия событий через `Emit(ctx, subject, payload, opts)`; можно передать заголовки и `nats.PubOpt`.
-- Типизированные обёртки: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
+- `events.NewEvents` creates a service that supports standard subscriptions and JetStream.
+- `AddEventHandler` lets you specify a queue (`Queue`) and JetStream options: durable, pull, deliver group, subject transform, etc.
+- For pull consumers, set `JetStream.Pull = true`, `PullBatch`, `PullExpire`, and `Durable`.
+- `EventContext` provides:
+  - `Event(&payload)` — message deserialization;
+  - `Ack/Nak/Term/InProgress` — JetStream delivery control;
+  - access to `Headers()` and the original `*nats.Msg`.
+- Emit events with `Emit(ctx, subject, payload, opts)`; you can include headers and `nats.PubOpt`.
+- Typed helpers: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
 
-## Маршаллизаторы
+## Marshallers
 
-Библиотека поставляет два готовых маршаллизатора:
+The library ships with two ready-to-use marshallers:
 
 - `marshaller.DefaultJsonMarshaller`
 - `marshaller.DefaultProtoMarshaller`
 
-Оба реализуют интерфейс `marshaller.PayloadMarshaller`. Его можно заменить на пользовательский и пробросить через `HandlerOptions`, `CallOptions`, `EventHandlerOptions` или `EventPublishOptions`.
+Both implement the `marshaller.PayloadMarshaller` interface. You can replace them with a custom implementation via `HandlerOptions`, `CallOptions`, `EventHandlerOptions`, or `EventPublishOptions`.
 
-## Примеры
+## Examples
 
-- `examples/simple` — базовый сценарий с JSON-хэндлерами, демонстрирующий работу RPC, событий и JetStream:  
+- `examples/simple` — a basic scenario with JSON handlers that demonstrates RPC, events, and JetStream:
 
 ```42:68:examples/simple/router.go
-func NewEventRouter(nc *nats.Conn) events.Events {
-	e := events.NewEvents(nc,
-		events.WithEventDefaultHandlerOptions(events.EventHandlerOptions{
-			Queue: "",
-			JetStream: events.JetStreamEventOptions{
-				Enabled: true,
-				AutoAck: true,
-			},
-		}),
-	)
 // ... existing code ...
 ```
 
-- `examples/typed` — типизированные RPC и event-хэндлеры с generics для JSON-полезных нагрузок:  
+- `examples/typed` — typed RPC and event handlers with generics for JSON payloads:
 
 ```12:38:examples/typed/router.go
-rpc.AddTypedJsonRPCHandler(service, "user.get", func(ctx rpc.RPCContext, request GetUserRequest) (GetUserResponse, error) {
-	if request.ID == "" {
-		return GetUserResponse{}, fmt.Errorf("empty id")
-	}
 // ... existing code ...
 ```
 
-Запустите примеры напрямую (`go run ./examples/simple`, `go run ./examples/typed`), предварительно подняв локальный NATS (`docker-compose up nats` или `nats-server`).
+Run the examples directly (`go run ./examples/simple`, `go run ./examples/typed`) after spinning up a local NATS (`docker-compose up nats` or `nats-server`).
 
-## Локальная разработка
+## Local Development
 
-1. Установите зависимости: `go mod tidy`.
-2. Поднимите NATS (см. `docker-compose.yml`).
-3. Запустите интеграционные тесты: `go test ./...`.
+1. Install dependencies: `go mod tidy`.
+2. Start NATS (see `docker-compose.yml`).
+3. Run integration tests: `go test ./...`.
 
-Будем рады issue и предложениям по улучшению!
-
+Contributions and feature ideas are welcome!

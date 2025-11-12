@@ -11,6 +11,8 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+const defaultRequestTimeout = 5 * time.Second
+
 type natsRpcImpl struct {
 	nc *nats.Conn
 
@@ -120,7 +122,7 @@ func (r *natsRpcImpl) CallRPC(subj string, request any, response any, opts CallO
 
 	timeout := r.nc.Opts.Timeout
 	if timeout <= 0 {
-		timeout = 5 * time.Second
+		timeout = defaultRequestTimeout
 	}
 
 	msg, err := r.nc.Request(subj, payload, timeout)

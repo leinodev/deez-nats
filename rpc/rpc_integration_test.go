@@ -46,16 +46,16 @@ func TestRPCIntegrationCallSuccess(t *testing.T) {
 
 	var resp addResponse
 	if err := rpcServer.CallRPC(method, addRequest{A: 10, B: 32}, &resp, CallOptions{}); err != nil {
-		t.Fatalf("вызов RPC: %v", err)
+		t.Fatalf("rpc call failed: %v", err)
 	}
 	if resp.Sum != 42 {
-		t.Fatalf("неожиданная сумма: %d", resp.Sum)
+		t.Fatalf("unexpected sum: %d", resp.Sum)
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -84,13 +84,13 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 	var resp addResponse
 	err := rpcServer.CallRPC(rpcSubject, addRequest{A: 1, B: 2}, &resp, CallOptions{})
 	if err == nil {
-		t.Fatal("ожидалась ошибка от обработчика, но CallRPC завершился успешно")
+		t.Fatal("expected handler error, but CallRPC succeeded")
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -114,16 +114,16 @@ func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
 
 	var resp addResponse
 	if err := rpcServer.CallRPC(method, addRequest{A: 5, B: 7}, &resp, CallOptions{}); err != nil {
-		t.Fatalf("вызов typed RPC: %v", err)
+		t.Fatalf("typed RPC call failed: %v", err)
 	}
 	if resp.Sum != 12 {
-		t.Fatalf("неожиданная сумма: %d", resp.Sum)
+		t.Fatalf("unexpected sum: %d", resp.Sum)
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -148,13 +148,13 @@ func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
 	var resp addResponse
 	err := rpcServer.CallRPC(method, addRequest{A: 1, B: 2}, &resp, CallOptions{})
 	if err == nil {
-		t.Fatal("ожидалась ошибка от typed обработчика, но CallRPC завершился успешно")
+		t.Fatal("expected error from typed handler, but CallRPC succeeded")
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -180,24 +180,24 @@ func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
 
 	var resp addResponse
 	if err := rpcServer.CallRPC(method, addRequest{A: 20, B: 22}, &resp, CallOptions{Marshaller: recMarshaller}); err != nil {
-		t.Fatalf("вызов typed RPC с кастомным маршаллером: %v", err)
+		t.Fatalf("typed RPC call with custom marshaller failed: %v", err)
 	}
 	if resp.Sum != 42 {
-		t.Fatalf("неожиданная сумма: %d", resp.Sum)
+		t.Fatalf("unexpected sum: %d", resp.Sum)
 	}
 
 	marshalCount, unmarshalCount := recMarshaller.counts()
 	if marshalCount < 2 {
-		t.Fatalf("ожидалось минимум два вызова Marshall, получено: %d", marshalCount)
+		t.Fatalf("expected at least two Marshall calls, got: %d", marshalCount)
 	}
 	if unmarshalCount < 2 {
-		t.Fatalf("ожидалось минимум два вызова Unmarshall, получено: %d", unmarshalCount)
+		t.Fatalf("expected at least two Unmarshall calls, got: %d", unmarshalCount)
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -212,7 +212,7 @@ func waitForRPCSubscriptions(t *testing.T, nc *nats.Conn) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	t.Fatal("не удалось дождаться регистрации RPC обработчиков")
+	t.Fatal("failed to wait for RPC handlers registration")
 }
 
 type recordingMarshaller struct {

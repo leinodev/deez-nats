@@ -27,7 +27,7 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	evts.AddEventHandler(subject, func(ctx EventContext) error {
 		var payload sampleEvent
 		if err := ctx.Event(&payload); err != nil {
-			t.Errorf("десериализация события: %v", err)
+			t.Errorf("event deserialization failed: %v", err)
 			return err
 		}
 		select {
@@ -51,22 +51,22 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	}
 
 	if err := evts.Emit(context.Background(), subject, want, nil); err != nil {
-		t.Fatalf("публикация события: %v", err)
+		t.Fatalf("event publish failed: %v", err)
 	}
 
 	select {
 	case got := <-received:
 		if got != want {
-			t.Fatalf("неожиданный payload: %#v", got)
+			t.Fatalf("unexpected payload: %#v", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("обработчик не был вызван")
+		t.Fatal("handler was not invoked")
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -82,7 +82,7 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		Subjects: []string{subject},
 		Storage:  nats.MemoryStorage,
 	}); err != nil {
-		t.Fatalf("создание потока JetStream: %v", err)
+		t.Fatalf("jetstream stream creation failed: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = js.DeleteStream(streamName)
@@ -101,7 +101,7 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 	evts.AddEventHandler(subject, func(ctx EventContext) error {
 		var payload sampleEvent
 		if err := ctx.Event(&payload); err != nil {
-			t.Errorf("десериализация события: %v", err)
+			t.Errorf("event deserialization failed: %v", err)
 			return err
 		}
 		select {
@@ -131,22 +131,22 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 	}
 
 	if err := evts.Emit(context.Background(), subject, want, pubOpts); err != nil {
-		t.Fatalf("публикация JetStream события: %v", err)
+		t.Fatalf("jetstream event publish failed: %v", err)
 	}
 
 	select {
 	case got := <-received:
 		if got != want {
-			t.Fatalf("неожиданный payload: %#v", got)
+			t.Fatalf("unexpected payload: %#v", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("обработчик JetStream не был вызван")
+		t.Fatal("jetstream handler was not invoked")
 	}
 
 	cancel()
 
 	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("ожидалось завершение без ошибки, получили: %v", err)
+		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
 
@@ -161,5 +161,5 @@ func waitForSubscriptions(t *testing.T, nc *nats.Conn) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	t.Fatal("не удалось дождаться регистрации подписок")
+	t.Fatal("failed to wait for subscriptions to register")
 }
