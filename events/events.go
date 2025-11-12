@@ -62,7 +62,6 @@ type natsEventsImpl struct {
 	subs         []*nats.Subscription
 	pullWaits    []context.CancelFunc
 	started      bool
-	stopOnce     sync.Once
 	stopWaiter   sync.WaitGroup
 	shutdownFunc context.CancelFunc
 }
@@ -142,11 +141,9 @@ func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 		}
 	}
 
-	select {
-	case <-startCtx.Done():
-		e.waitPullers()
-		return startCtx.Err()
-	}
+	<-startCtx.Done()
+	e.waitPullers()
+	return startCtx.Err()
 }
 
 func (e *natsEventsImpl) bindEvent(ctx context.Context, info eventInfo) error {

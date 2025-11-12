@@ -178,6 +178,7 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler 
 			if ctxImpl != nil && !ctxImpl.hasResponse() {
 				if werr := ctxImpl.writeError(err); werr != nil && !errors.Is(werr, errResponseAlreadyWritten) {
 					// ignore marshalling error, will trigger NAK
+					_ = werr
 				}
 			}
 
