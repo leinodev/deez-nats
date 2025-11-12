@@ -27,10 +27,14 @@ func (r *rpcRouterImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts
 	if len(method) == 0 {
 		panic("empty rpc method name")
 	}
-
-	options := r.base.DefaultOptions()
+	defaultOpts := r.base.DefaultOptions()
+	options := defaultOpts
 	if opts != nil {
 		options = *opts
+
+		if options.Marshaller == nil {
+			options.Marshaller = defaultOpts.Marshaller
+		}
 	}
 
 	r.base.Add(method, handler, options, middlewares...)

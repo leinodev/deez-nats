@@ -25,7 +25,7 @@ type addResponse struct {
 func TestRPCIntegrationCallSuccess(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	rpcServer := NewNatsRPC(nc)
+	rpcServer := NewNatsRPC(nc, "myservice")
 	method := fmt.Sprintf("integration.add.%d", time.Now().UnixNano())
 
 	rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
@@ -45,7 +45,7 @@ func TestRPCIntegrationCallSuccess(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 
 	var resp addResponse
-	if err := rpcServer.CallRPC(method, addRequest{A: 10, B: 32}, &resp, CallOptions{}); err != nil {
+	if err := rpcServer.CallRPC(ctx, "myservice."+method, addRequest{A: 10, B: 32}, &resp, CallOptions{}); err != nil {
 		t.Fatalf("rpc call failed: %v", err)
 	}
 	if resp.Sum != 42 {
@@ -64,7 +64,7 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 
 	rpcSubject := fmt.Sprintf("integration.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc)
+	rpcServer := NewNatsRPC(nc, "myservice")
 	rpcServer.AddRPCHandler(rpcSubject, func(ctx RPCContext) error {
 		var req addRequest
 		if err := ctx.Request(&req); err != nil {
@@ -82,7 +82,7 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 
 	var resp addResponse
-	err := rpcServer.CallRPC(rpcSubject, addRequest{A: 1, B: 2}, &resp, CallOptions{})
+	err := rpcServer.CallRPC(ctx, "myservice."+rpcSubject, addRequest{A: 1, B: 2}, &resp, CallOptions{})
 	if err == nil {
 		t.Fatal("expected handler error, but CallRPC succeeded")
 	}
@@ -99,7 +99,7 @@ func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
 
 	method := fmt.Sprintf("integration.typed.add.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc)
+	rpcServer := NewNatsRPC(nc, "myservice")
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	}, nil)
@@ -113,7 +113,7 @@ func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 
 	var resp addResponse
-	if err := rpcServer.CallRPC(method, addRequest{A: 5, B: 7}, &resp, CallOptions{}); err != nil {
+	if err := rpcServer.CallRPC(ctx, "myservice."+method, addRequest{A: 5, B: 7}, &resp, CallOptions{}); err != nil {
 		t.Fatalf("typed RPC call failed: %v", err)
 	}
 	if resp.Sum != 12 {
@@ -132,7 +132,7 @@ func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
 
 	method := fmt.Sprintf("integration.typed.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc)
+	rpcServer := NewNatsRPC(nc, "myservice")
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{}, errors.New("typed handler failure")
 	}, nil)
@@ -146,7 +146,7 @@ func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 
 	var resp addResponse
-	err := rpcServer.CallRPC(method, addRequest{A: 1, B: 2}, &resp, CallOptions{})
+	err := rpcServer.CallRPC(ctx, "myservice."+method, addRequest{A: 1, B: 2}, &resp, CallOptions{})
 	if err == nil {
 		t.Fatal("expected error from typed handler, but CallRPC succeeded")
 	}
@@ -165,7 +165,7 @@ func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
 
 	recMarshaller := newRecordingMarshaller(nil)
 
-	rpcServer := NewNatsRPC(nc)
+	rpcServer := NewNatsRPC(nc, "myservice")
 	AddTypedRPCHandlerWithMarshaller(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	}, recMarshaller)
@@ -179,7 +179,7 @@ func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 
 	var resp addResponse
-	if err := rpcServer.CallRPC(method, addRequest{A: 20, B: 22}, &resp, CallOptions{Marshaller: recMarshaller}); err != nil {
+	if err := rpcServer.CallRPC(ctx, "myservice."+method, addRequest{A: 20, B: 22}, &resp, CallOptions{Marshaller: recMarshaller}); err != nil {
 		t.Fatalf("typed RPC call with custom marshaller failed: %v", err)
 	}
 	if resp.Sum != 42 {

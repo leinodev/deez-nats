@@ -9,38 +9,30 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-var errResponseAlreadyWritten = errors.New("rpc response already written")
+var (
+	ErrResponseAlreadyWritten = errors.New("rpc response already written")
+	ErrEmptyError             = errors.New("cannot respond with empty error")
+)
 
-func newRpcContext(parent context.Context, msg *nats.Msg, m marshaller.PayloadMarshaller, writer func(*marshaller.MarshalObject, nats.Header) error) RPCContext {
-	if parent == nil {
-		parent = context.Background()
-	}
-	if m == nil {
-		m = marshaller.DefaultJsonMarshaller
-	}
-
+func newRpcContext(parent context.Context, msg *nats.Msg, handlerOptions HandlerOptions) RPCContext {
 	return &rpcContextImpl{
 		ctx:             parent,
 		msg:             msg,
-		marshaller:      m,
-		writer:          writer,
-		requestHeaders:  cloneHeader(msg.Header),
-		responseHeaders: nil,
+		handlerOptions:  handlerOptions,
+		responseHeaders: nats.Header{},
+		respWr:          false,
 	}
 }
 
 type rpcContextImpl struct {
 	ctx context.Context
 
-	msg        *nats.Msg
-	marshaller marshaller.PayloadMarshaller
+	msg            *nats.Msg
+	handlerOptions HandlerOptions
 
-	writer func(*marshaller.MarshalObject, nats.Header) error
-
-	requestHeaders  nats.Header
 	responseHeaders nats.Header
 
-	responseWritten bool
+	respWr bool
 }
 
 // Context inherited
@@ -57,92 +49,68 @@ func (c *rpcContextImpl) Value(key any) any {
 	return c.ctx.Value(key)
 }
 
-// Rpc methods
+// Rpc inherited methods
 func (c *rpcContextImpl) Request(data any) error {
-	if c.msg == nil {
-		return errors.New("nil rpc message")
-	}
-
-	payload := &marshaller.MarshalObject{
+	err := c.handlerOptions.Marshaller.Unmarshall(c.msg.Data, &marshaller.MarshalObject{
 		Data: data,
-	}
-
-	if err := c.marshaller.Unmarshall(c.msg.Data, payload); err != nil {
+	})
+	if err != nil {
 		return err
-	}
-
-	if payload.Error != "" {
-		return errors.New(payload.Error)
 	}
 
 	return nil
 }
-
 func (c *rpcContextImpl) Ok(data any) error {
-	if c.responseWritten {
-		return errResponseAlreadyWritten
-	}
-
-	if c.writer == nil {
-		return errors.New("rpc writer is nil")
+	if c.respWr {
+		return ErrResponseAlreadyWritten
 	}
 
 	obj := &marshaller.MarshalObject{
 		Data: data,
 	}
 
-	if err := c.writer(obj, cloneHeader(c.Headers())); err != nil {
+	if err := c.respond(obj); err != nil {
 		return err
 	}
 
-	c.responseWritten = true
+	c.respWr = true
 	return nil
 }
-
 func (c *rpcContextImpl) RequestHeaders() nats.Header {
-	return c.requestHeaders
+	return c.msg.Header
 }
-
 func (c *rpcContextImpl) Headers() nats.Header {
-	if c.responseHeaders == nil {
-		c.responseHeaders = nats.Header{}
-	}
 	return c.responseHeaders
 }
-
-func (c *rpcContextImpl) writeError(err error) error {
-	if err == nil {
-		return nil
+func (c *rpcContextImpl) responseWritten() bool {
+	return c.respWr
+}
+func (c *rpcContextImpl) writeError(werr error) error {
+	if werr == nil {
+		return ErrEmptyError
 	}
-	if c.responseWritten {
-		return errResponseAlreadyWritten
-	}
-	if c.writer == nil {
-		return errors.New("rpc writer is nil")
-	}
-	obj := &marshaller.MarshalObject{
-		Error: err.Error(),
+	if c.respWr {
+		return ErrResponseAlreadyWritten
 	}
 
-	if werr := c.writer(obj, cloneHeader(c.Headers())); werr != nil {
+	err := c.respond(&marshaller.MarshalObject{
+		Error: werr.Error(),
+	})
+	if err != nil {
 		return werr
 	}
-
-	c.responseWritten = true
+	c.respWr = true
 	return nil
 }
 
-func (c *rpcContextImpl) hasResponse() bool {
-	return c.responseWritten
-}
-
-func cloneHeader(h nats.Header) nats.Header {
-	if len(h) == 0 {
-		return nil
+func (c *rpcContextImpl) respond(obj *marshaller.MarshalObject) error {
+	data, err := c.handlerOptions.Marshaller.Marshall(obj)
+	if err != nil {
+		return err
 	}
-	copy := nats.Header{}
-	for k, values := range h {
-		copy[k] = append([]string(nil), values...)
-	}
-	return copy
+	return c.msg.RespondMsg(&nats.Msg{
+		Subject: c.msg.Reply,
+		Data:    data,
+		Header:  c.responseHeaders,
+	})
 }
