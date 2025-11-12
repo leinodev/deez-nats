@@ -41,7 +41,7 @@ func (r *Base[THandler, TMiddleware, TOptions]) Add(name string, handler THandle
 }
 
 func (r *Base[THandler, TMiddleware, TOptions]) Child(name string) *Base[THandler, TMiddleware, TOptions] {
-	child := NewBase[THandler, TMiddleware, TOptions](name, r.defaultOpts)
+	child := NewBase[THandler, TMiddleware](name, r.defaultOpts)
 	r.childs = append(r.childs, child)
 	return child
 }
