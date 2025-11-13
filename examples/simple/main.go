@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
+	"os/signal"
 	"simple/protocoljson"
+	"syscall"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -54,5 +57,31 @@ func main() {
 		log.Printf("rpc call test: %v", err)
 	}
 
-	time.Sleep(2 * time.Second)
+	// Graceful shutdown: wait for shutdown signal (SIGINT or SIGTERM)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	<-sigChan
+	log.Println("Received shutdown signal, starting graceful shutdown...")
+
+	// Cancel context to stop processing new messages
+	cancel()
+
+	// Perform graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := eventService.Shutdown(shutdownCtx); err != nil {
+		log.Printf("events service shutdown error: %v", err)
+	} else {
+		log.Println("events service shutdown completed")
+	}
+
+	if err := rpcService.Shutdown(shutdownCtx); err != nil {
+		log.Printf("rpc service shutdown error: %v", err)
+	} else {
+		log.Println("rpc service shutdown completed")
+	}
+
+	log.Println("Graceful shutdown completed")
 }

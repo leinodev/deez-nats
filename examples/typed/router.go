@@ -40,15 +40,15 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 	return service
 }
 
-func NewEventRouter(nc *nats.Conn) events.Events {
-	service := events.NewEvents(nc,
-		events.WithEventDefaultHandlerOptions(events.EventHandlerOptions{
-			JetStream: events.JetStreamEventOptions{
-				Enabled: true,
-				AutoAck: true,
-			},
-		}),
-	)
+func NewEventRouter(nc *nats.Conn) events.NatsEvents {
+	opts := events.NewEventsOptionsBuilder().
+		WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
+			b.WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
+				jsb.Enabled().WithAutoAck(true)
+			})
+		}).
+		Build()
+	service := events.NewNatsEvents(nc, &opts)
 
 	events.AddTypedEventHandler(service, "user.created", func(ctx events.EventContext, payload UserCreatedEvent) error {
 		fmt.Printf("user created via typed handler: %#v\n", payload)

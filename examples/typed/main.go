@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -38,12 +41,38 @@ func main() {
 	}()
 
 	emitExamples(ctx, eventService)
-	callExamples(rpcService)
+	callExamples(ctx, rpcService)
 
-	time.Sleep(2 * time.Second)
+	// Graceful shutdown: wait for shutdown signal (SIGINT or SIGTERM)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	<-sigChan
+	log.Println("Received shutdown signal, starting graceful shutdown...")
+
+	// Cancel context to stop processing new messages
+	cancel()
+
+	// Perform graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := eventService.Shutdown(shutdownCtx); err != nil {
+		log.Printf("events service shutdown error: %v", err)
+	} else {
+		log.Println("events service shutdown completed")
+	}
+
+	if err := rpcService.Shutdown(shutdownCtx); err != nil {
+		log.Printf("rpc service shutdown error: %v", err)
+	} else {
+		log.Println("rpc service shutdown completed")
+	}
+
+	log.Println("Graceful shutdown completed")
 }
 
-func emitExamples(ctx context.Context, service events.Events) {
+func emitExamples(ctx context.Context, service events.NatsEvents) {
 	if err := service.Emit(ctx, "user.created", UserCreatedEvent{ID: "42", Name: "Typed Example"}, nil); err != nil {
 		log.Printf("emit user.created: %v", err)
 	}
@@ -53,16 +82,16 @@ func emitExamples(ctx context.Context, service events.Events) {
 	}
 }
 
-func callExamples(service rpc.NatsRPC) {
+func callExamples(ctx context.Context, service rpc.NatsRPC) {
 	var getResp GetUserResponse
-	if err := service.CallRPC("user.get", GetUserRequest{ID: "42"}, &getResp, rpc.CallOptions{}); err != nil {
+	if err := service.CallRPC(ctx, "user.get", GetUserRequest{ID: "42"}, &getResp, rpc.CallOptions{}); err != nil {
 		log.Printf("rpc call user.get: %v", err)
 	} else {
 		log.Printf("user.get response: %#v", getResp)
 	}
 
 	var updateResp UpdateUserResponse
-	if err := service.CallRPC("user.update", UpdateUserRequest{ID: "42", Name: "Typed Example v2"}, &updateResp, rpc.CallOptions{}); err != nil {
+	if err := service.CallRPC(ctx, "user.update", UpdateUserRequest{ID: "42", Name: "Typed Example v2"}, &updateResp, rpc.CallOptions{}); err != nil {
 		log.Printf("rpc call user.update: %v", err)
 	} else {
 		log.Printf("user.update response: %#v", updateResp)

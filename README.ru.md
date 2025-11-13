@@ -53,7 +53,7 @@ go eventsSvc.StartWithContext(ctx)
 
 _ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"}, nil)
 var resp PingResponse
-_ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
+_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
 ```
 
 ## RPC
@@ -120,6 +120,89 @@ opts := events.NewEventsOptionsBuilder().
 
 eventsSvc := events.NewNatsEvents(nc, &opts)
 ```
+
+## Graceful Shutdown
+
+Библиотека поддерживает graceful shutdown для RPC и событийных сервисов. Это позволяет корректно завершить обработку активных запросов и событий перед остановкой сервиса.
+
+### Использование
+
+Оба сервиса (`rpc.NatsRPC` и `events.NatsEvents`) реализуют метод `Shutdown(ctx context.Context) error`, который:
+
+1. **Останавливает приём новых сообщений** — подписки переводятся в режим drain, новые запросы и события не принимаются.
+2. **Ожидает завершения активных обработчиков** — все запущенные обработчики получают возможность завершить работу.
+3. **Отписывается от всех подписок** — после завершения всех обработчиков происходит отписка от NATS subjects.
+
+### Пример использования
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+
+    "github.com/nats-io/nats.go"
+    "github.com/leinodev/deez-nats/events"
+    "github.com/leinodev/deez-nats/rpc"
+)
+
+func main() {
+    nc, _ := nats.Connect(nats.DefaultURL)
+    defer nc.Close()
+
+    eventService := events.NewNatsEvents(nc, nil)
+    rpcService := rpc.NewNatsRPC(nc, nil)
+
+    // ... настройка обработчиков ...
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    go eventService.StartWithContext(ctx)
+    go rpcService.StartWithContext(ctx)
+
+    // Ожидание сигнала завершения (SIGINT или SIGTERM)
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+    <-sigChan
+    log.Println("Received shutdown signal, starting graceful shutdown...")
+
+    // Отменяем контекст, чтобы остановить обработку новых сообщений
+    cancel()
+
+    // Выполняем graceful shutdown с таймаутом
+    shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer shutdownCancel()
+
+    if err := eventService.Shutdown(shutdownCtx); err != nil {
+        log.Printf("events service shutdown error: %v", err)
+    } else {
+        log.Println("events service shutdown completed")
+    }
+
+    if err := rpcService.Shutdown(shutdownCtx); err != nil {
+        log.Printf("rpc service shutdown error: %v", err)
+    } else {
+        log.Println("rpc service shutdown completed")
+    }
+
+    log.Println("Graceful shutdown completed")
+}
+```
+
+### Важные моменты
+
+- **Таймаут**: Всегда используйте контекст с таймаутом для `Shutdown()`, чтобы избежать бесконечного ожидания.
+- **Порядок**: Сначала отмените контекст (`cancel()`), затем вызовите `Shutdown()` — это гарантирует, что новые сообщения не будут приняты.
+- **Обработка ошибок**: Если `Shutdown()` возвращает ошибку (например, `context.DeadlineExceeded`), это означает, что не все обработчики успели завершиться в отведённое время. В этом случае можно принять решение о принудительном завершении.
+
+Примеры с полной реализацией graceful shutdown можно найти в `examples/simple/main.go` и `examples/typed/main.go`.
 
 ## Маршаллизаторы
 

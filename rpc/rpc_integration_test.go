@@ -254,3 +254,145 @@ func (r *recordingMarshaller) counts() (int, int) {
 	defer r.mu.Unlock()
 	return r.marshalCount, r.unmarshalCount
 }
+
+func TestRPCIntegrationGracefulShutdown(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
+	method := fmt.Sprintf("integration.shutdown.%d", time.Now().UnixNano())
+
+	handlerStarted := make(chan struct{})
+	handlerFinished := make(chan struct{})
+	shutdownComplete := make(chan struct{})
+
+	rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
+		close(handlerStarted)
+		// Simulate long processing
+		time.Sleep(500 * time.Millisecond)
+		var req addRequest
+		if err := ctx.Request(&req); err != nil {
+			return err
+		}
+		close(handlerFinished)
+		return ctx.Ok(&addResponse{Sum: req.A + req.B})
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- rpcServer.StartWithContext(ctx)
+	}()
+
+	waitForRPCSubscriptions(t, nc)
+
+	// Send request in a separate goroutine
+	var resp addResponse
+	callDone := make(chan error, 1)
+	go func() {
+		callDone <- rpcServer.CallRPC(context.Background(), "myservice."+method, addRequest{A: 10, B: 32}, &resp, CallOptions{})
+	}()
+
+	// Wait for handler to start
+	<-handlerStarted
+
+	// Initiate graceful shutdown
+	go func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		cancel() // Cancel context to stop accepting new messages
+		err := rpcServer.Shutdown(shutdownCtx)
+		if err != nil {
+			t.Errorf("shutdown failed: %v", err)
+		}
+		close(shutdownComplete)
+	}()
+
+	// Wait for handler to finish
+	select {
+	case <-handlerFinished:
+		// Handler finished successfully
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not finish within timeout")
+	}
+
+	// Wait for graceful shutdown to complete
+	select {
+	case <-shutdownComplete:
+		// Shutdown completed successfully
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown did not complete within timeout")
+	}
+
+	// Verify that request was processed
+	select {
+	case err := <-callDone:
+		if err != nil {
+			t.Fatalf("rpc call failed: %v", err)
+		}
+		if resp.Sum != 42 {
+			t.Fatalf("unexpected sum: %d", resp.Sum)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("rpc call did not complete")
+	}
+
+	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected completion without error, got: %v", err)
+	}
+}
+
+func TestRPCIntegrationGracefulShutdownTimeout(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
+	method := fmt.Sprintf("integration.shutdown.timeout.%d", time.Now().UnixNano())
+
+	handlerStarted := make(chan struct{})
+
+	rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
+		close(handlerStarted)
+		// Simulate very long processing that will exceed shutdown timeout
+		time.Sleep(2 * time.Second)
+		var req addRequest
+		if err := ctx.Request(&req); err != nil {
+			return err
+		}
+		return ctx.Ok(&addResponse{Sum: req.A + req.B})
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- rpcServer.StartWithContext(ctx)
+	}()
+
+	waitForRPCSubscriptions(t, nc)
+
+	// Send request in a separate goroutine
+	var resp addResponse
+	go func() {
+		_ = rpcServer.CallRPC(context.Background(), "myservice."+method, addRequest{A: 10, B: 32}, &resp, CallOptions{})
+	}()
+
+	// Wait for handler to start
+	<-handlerStarted
+
+	// Initiate graceful shutdown with short timeout
+	cancel() // Cancel context to stop accepting new messages
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer shutdownCancel()
+
+	err := rpcServer.Shutdown(shutdownCtx)
+	if err == nil {
+		t.Fatal("expected shutdown to timeout, but it completed")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded error, got: %v", err)
+	}
+
+	if err := <-startErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected completion without error, got: %v", err)
+	}
+}

@@ -55,7 +55,7 @@ go eventsSvc.StartWithContext(ctx)
 
 _ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"}, nil)
 var resp PingResponse
-_ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
+_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
 ```
 
 ## RPC
@@ -122,6 +122,89 @@ opts := events.NewEventsOptionsBuilder().
 
 eventsSvc := events.NewNatsEvents(nc, &opts)
 ```
+
+## Graceful Shutdown
+
+The library supports graceful shutdown for both RPC and event services. This allows you to properly finish processing active requests and events before stopping the service.
+
+### Usage
+
+Both services (`rpc.NatsRPC` and `events.NatsEvents`) implement the `Shutdown(ctx context.Context) error` method, which:
+
+1. **Stops accepting new messages** — subscriptions are drained, new requests and events are no longer accepted.
+2. **Waits for active handlers to finish** — all running handlers are given a chance to complete their work.
+3. **Unsubscribes from all subscriptions** — after all handlers finish, unsubscription from NATS subjects occurs.
+
+### Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+
+    "github.com/nats-io/nats.go"
+    "github.com/leinodev/deez-nats/events"
+    "github.com/leinodev/deez-nats/rpc"
+)
+
+func main() {
+    nc, _ := nats.Connect(nats.DefaultURL)
+    defer nc.Close()
+
+    eventService := events.NewNatsEvents(nc, nil)
+    rpcService := rpc.NewNatsRPC(nc, nil)
+
+    // ... configure handlers ...
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    go eventService.StartWithContext(ctx)
+    go rpcService.StartWithContext(ctx)
+
+    // Wait for shutdown signal (SIGINT or SIGTERM)
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+    <-sigChan
+    log.Println("Received shutdown signal, starting graceful shutdown...")
+
+    // Cancel context to stop processing new messages
+    cancel()
+
+    // Perform graceful shutdown with timeout
+    shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer shutdownCancel()
+
+    if err := eventService.Shutdown(shutdownCtx); err != nil {
+        log.Printf("events service shutdown error: %v", err)
+    } else {
+        log.Println("events service shutdown completed")
+    }
+
+    if err := rpcService.Shutdown(shutdownCtx); err != nil {
+        log.Printf("rpc service shutdown error: %v", err)
+    } else {
+        log.Println("rpc service shutdown completed")
+    }
+
+    log.Println("Graceful shutdown completed")
+}
+```
+
+### Important Notes
+
+- **Timeout**: Always use a context with timeout for `Shutdown()` to avoid infinite waiting.
+- **Order**: First cancel the context (`cancel()`), then call `Shutdown()` — this ensures that new messages won't be accepted.
+- **Error handling**: If `Shutdown()` returns an error (e.g., `context.DeadlineExceeded`), it means not all handlers finished within the allotted time. In this case, you can decide to force termination.
+
+Full graceful shutdown implementations can be found in `examples/simple/main.go` and `examples/typed/main.go`.
 
 ## Marshallers
 
