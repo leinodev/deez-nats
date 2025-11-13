@@ -30,7 +30,11 @@ func (r *eventRouterImpl) Use(middlewares ...EventMiddlewareFunc) {
 	r.base.Use(middlewares...)
 }
 
-func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc) {
+func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFunc, opts ...EventHandlerOption) {
+	r.AddEventHandlerWithMiddlewares(subject, handler, nil, opts...)
+}
+
+func (r *eventRouterImpl) AddEventHandlerWithMiddlewares(subject string, handler EventHandleFunc, middlewares []EventMiddlewareFunc, opts ...EventHandlerOption) {
 	if subject == "" {
 		panic("empty event subject name")
 	}
@@ -42,14 +46,19 @@ func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFun
 
 	options := defaultOpts
 
-	if opts != nil {
-		options = *opts
-		if options.Marshaller == nil {
-			options.Marshaller = defaultOpts.Marshaller
-		}
-		if !opts.JetStream.Enabled {
-			options.JetStream = JetStreamEventOptions{}
-		}
+	// Apply functional options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	// Preserve default marshaller if not set
+	if options.Marshaller == nil {
+		options.Marshaller = defaultOpts.Marshaller
+	}
+
+	// If JetStream is not enabled, clear JetStream options
+	if !options.JetStream.Enabled {
+		options.JetStream = JetStreamEventOptions{}
 	}
 
 	if options.Marshaller == nil {

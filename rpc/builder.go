@@ -5,107 +5,127 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type HandlerOptionsBuilder struct {
-	opts HandlerOptions
-}
+// RPCOption is a functional option for configuring RPCOptions
+type RPCOption func(*RPCOptions)
 
-// NewHandlerOptionsBuilder creates a new HandlerOptionsBuilder
-func NewHandlerOptionsBuilder() *HandlerOptionsBuilder {
-	return &HandlerOptionsBuilder{
-		opts: HandlerOptions{
-			Marshaller: marshaller.DefaultJsonMarshaller,
-		},
+func WithBaseRoute(route string) RPCOption {
+	return func(opts *RPCOptions) {
+		opts.BaseRoute = route
 	}
 }
-func (b *HandlerOptionsBuilder) WithMarshaller(m marshaller.PayloadMarshaller) *HandlerOptionsBuilder {
-	b.opts.Marshaller = m
-	return b
+func WithDefaultHandlerMarshaller(m marshaller.PayloadMarshaller) RPCOption {
+	return func(opts *RPCOptions) {
+		opts.DefaultHandlerOptions.Marshaller = m
+	}
 }
-func (b *HandlerOptionsBuilder) Build() HandlerOptions {
-	return b.opts
+func WithDefaultCallMarshaller(m marshaller.PayloadMarshaller) RPCOption {
+	return func(opts *RPCOptions) {
+		opts.DefaultCallOptions.Marshaller = m
+	}
+}
+func WithDefaultCallOptions(callOpts ...CallOption) RPCOption {
+	return func(opts *RPCOptions) {
+		for _, opt := range callOpts {
+			opt(&opts.DefaultCallOptions)
+		}
+	}
+}
+func WithDefaultHandlerOptions(handlerOpts ...HandlerOption) RPCOption {
+	return func(opts *RPCOptions) {
+		for _, opt := range handlerOpts {
+			opt(&opts.DefaultHandlerOptions)
+		}
+	}
 }
 
-type CallOptionsBuilder struct {
-	opts CallOptions
+// HandlerOption is a functional option for configuring HandlerOptions
+type HandlerOption func(*HandlerOptions)
+
+func WithHandlerMarshaller(m marshaller.PayloadMarshaller) HandlerOption {
+	return func(opts *HandlerOptions) {
+		opts.Marshaller = m
+	}
 }
 
-// NewCallOptionsBuilder creates a new CallOptionsBuilder
-func NewCallOptionsBuilder() *CallOptionsBuilder {
-	return &CallOptionsBuilder{
-		opts: CallOptions{
+// WithHandlerMiddlewares creates a HandlerOption that sets middlewares for the handler
+func WithHandlerMiddlewares(middlewares ...RpcMiddlewareFunc) HandlerOption {
+	return func(opts *HandlerOptions) {
+		opts.middlewares = middlewares
+	}
+}
+
+// CallOption is a functional option for configuring CallOptions
+type CallOption func(*CallOptions)
+
+func WithCallMarshaller(m marshaller.PayloadMarshaller) CallOption {
+	return func(opts *CallOptions) {
+		opts.Marshaller = m
+	}
+}
+func WithCallHeader(key, value string) CallOption {
+	return func(opts *CallOptions) {
+		if opts.Headers == nil {
+			opts.Headers = make(nats.Header)
+		}
+		opts.Headers.Add(key, value)
+	}
+}
+func WithCallHeaders(headers nats.Header) CallOption {
+	return func(opts *CallOptions) {
+		if opts.Headers == nil {
+			opts.Headers = make(nats.Header)
+		}
+		for k, v := range headers {
+			opts.Headers[k] = append(opts.Headers[k], v...)
+		}
+	}
+}
+func SetCallHeader(key string, values []string) CallOption {
+	return func(opts *CallOptions) {
+		if opts.Headers == nil {
+			opts.Headers = make(nats.Header)
+		}
+		opts.Headers[key] = values
+	}
+}
+
+// NewHandlerOptions creates HandlerOptions from functional options
+func NewHandlerOptions(opts ...HandlerOption) HandlerOptions {
+	handlerOpts := HandlerOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+	}
+	for _, opt := range opts {
+		opt(&handlerOpts)
+	}
+	return handlerOpts
+}
+
+// NewCallOptions creates CallOptions from functional options
+func NewCallOptions(opts ...CallOption) CallOptions {
+	callOpts := CallOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+		Headers:    make(nats.Header),
+	}
+	for _, opt := range opts {
+		opt(&callOpts)
+	}
+	return callOpts
+}
+
+// NewRPCOptions creates RPCOptions from functional options
+func NewRPCOptions(opts ...RPCOption) RPCOptions {
+	rpcOpts := RPCOptions{
+		BaseRoute: "",
+		DefaultHandlerOptions: HandlerOptions{
+			Marshaller: marshaller.DefaultJsonMarshaller,
+		},
+		DefaultCallOptions: CallOptions{
 			Marshaller: marshaller.DefaultJsonMarshaller,
 			Headers:    make(nats.Header),
 		},
 	}
-}
-func (b *CallOptionsBuilder) WithMarshaller(m marshaller.PayloadMarshaller) *CallOptionsBuilder {
-	b.opts.Marshaller = m
-	return b
-}
-func (b *CallOptionsBuilder) WithHeader(key, value string) *CallOptionsBuilder {
-	if b.opts.Headers == nil {
-		b.opts.Headers = make(nats.Header)
+	for _, opt := range opts {
+		opt(&rpcOpts)
 	}
-	b.opts.Headers.Add(key, value)
-	return b
-}
-func (b *CallOptionsBuilder) WithHeaders(headers nats.Header) *CallOptionsBuilder {
-	if b.opts.Headers == nil {
-		b.opts.Headers = make(nats.Header)
-	}
-	for k, v := range headers {
-		b.opts.Headers[k] = append(b.opts.Headers[k], v...)
-	}
-	return b
-}
-func (b *CallOptionsBuilder) SetHeader(key string, values []string) *CallOptionsBuilder {
-	if b.opts.Headers == nil {
-		b.opts.Headers = make(nats.Header)
-	}
-	b.opts.Headers[key] = values
-	return b
-}
-func (b *CallOptionsBuilder) Build() CallOptions {
-	return b.opts
-}
-
-type RPCOptionsBuilder struct {
-	opts RPCOptions
-}
-
-// NewRPCOptionsBuilder creates a new RPCOptionsBuilder
-func NewRPCOptionsBuilder() *RPCOptionsBuilder {
-	return &RPCOptionsBuilder{
-		opts: RPCOptions{
-			BaseRoute: "",
-			DefaultHandlerOptions: HandlerOptions{
-				Marshaller: marshaller.DefaultJsonMarshaller,
-			},
-			DefaultCallOptions: CallOptions{
-				Marshaller: marshaller.DefaultJsonMarshaller,
-				Headers:    make(nats.Header),
-			},
-		},
-	}
-}
-func (b *RPCOptionsBuilder) WithBaseRoute(route string) *RPCOptionsBuilder {
-	b.opts.BaseRoute = route
-	return b
-}
-func (b *RPCOptionsBuilder) WithDefaultHandlerOptions(fn func(*HandlerOptionsBuilder)) *RPCOptionsBuilder {
-	handlerBuilder := NewHandlerOptionsBuilder()
-	handlerBuilder.opts = b.opts.DefaultHandlerOptions
-	fn(handlerBuilder)
-	b.opts.DefaultHandlerOptions = handlerBuilder.Build()
-	return b
-}
-func (b *RPCOptionsBuilder) WithDefaultCallOptions(fn func(*CallOptionsBuilder)) *RPCOptionsBuilder {
-	callBuilder := NewCallOptionsBuilder()
-	callBuilder.opts = b.opts.DefaultCallOptions
-	fn(callBuilder)
-	b.opts.DefaultCallOptions = callBuilder.Build()
-	return b
-}
-func (b *RPCOptionsBuilder) Build() RPCOptions {
-	return b.opts
+	return rpcOpts
 }

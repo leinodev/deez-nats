@@ -15,13 +15,14 @@ type NatsEvents interface {
 	EventRouter
 
 	StartWithContext(ctx context.Context) error
-	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
+	Emit(ctx context.Context, subject string, payload any, opts ...EventPublishOption) error
 	Shutdown(ctx context.Context) error
 }
 
 type EventRouter interface {
 	Use(middlewares ...EventMiddlewareFunc)
-	AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc)
+	AddEventHandler(subject string, handler EventHandleFunc, opts ...EventHandlerOption)
+	AddEventHandlerWithMiddlewares(subject string, handler EventHandleFunc, middlewares []EventMiddlewareFunc, opts ...EventHandlerOption)
 	Group(group string) EventRouter
 
 	dfs() []eventInfo

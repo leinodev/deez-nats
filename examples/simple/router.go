@@ -11,36 +11,32 @@ import (
 )
 
 func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
-	r := rpc.NewNatsRPC(nc, nil)
+	r := rpc.NewNatsRPC(nc)
 
-	r.AddRPCHandler("test", testHandler, nil)
-	r.AddRPCHandler("sraka", test1Handler, nil)
+	r.AddRPCHandler("test", testHandler)
+	r.AddRPCHandler("sraka", test1Handler)
 
 	return r
 }
 
 func NewEventRouter(nc *nats.Conn) events.NatsEvents {
-	opts := events.NewEventsOptionsBuilder().
-		WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
-			b.WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
-				jsb.Enabled().WithAutoAck(true)
-			})
-		}).
-		Build()
-	e := events.NewNatsEvents(nc, &opts)
+	e := events.NewNatsEvents(nc,
+		events.WithJetStream(true),
+		events.WithAutoAck(true),
+	)
 
 	e.Use(eventLoggingMiddleware)
 
-	e.AddEventHandler("entity.created", entityCreatedHandler, &events.EventHandlerOptions{
-		JetStream: events.JetStreamEventOptions{
-			Enabled:      true,
-			AutoAck:      true,
-			Durable:      "entity-created-consumer",
-			DeliverGroup: "entity-events",
-		},
-	})
+	e.AddEventHandler("entity.created", entityCreatedHandler,
+		events.WithHandlerJetStream(
+			events.WithJSEnabled(true),
+			events.WithJSAutoAck(true),
+			events.WithJSDurable("entity-created-consumer"),
+			events.WithJSDeliverGroup("entity-events"),
+		),
+	)
 
-	e.AddEventHandler("entity.updated", entityUpdatedHandler, nil)
+	e.AddEventHandler("entity.updated", entityUpdatedHandler)
 
 	return e
 }

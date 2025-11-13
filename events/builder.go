@@ -7,195 +7,196 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type EventHandlerOptionsBuilder struct {
-	opts EventHandlerOptions
+// EventsOption is a functional option for configuring EventsOptions
+type EventsOption func(*EventsOptions)
+
+func WithTimeout(timeout time.Duration) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.DefaultHandlerOptions.JetStream.PullExpire = timeout
+	}
+}
+func WithJetStream(enabled bool) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.DefaultHandlerOptions.JetStream.Enabled = enabled
+	}
+}
+func WithAutoAck(autoAck bool) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.DefaultHandlerOptions.JetStream.AutoAck = autoAck
+	}
+}
+func WithJetStreamContext(js nats.JetStreamContext) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.JetStream = js
+	}
+}
+func WithJetStreamOptions(jsOpts ...nats.JSOpt) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.JetStreamOptions = append(opts.JetStreamOptions, jsOpts...)
+	}
+}
+func WithDefaultMarshaller(m marshaller.PayloadMarshaller) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.DefaultHandlerOptions.Marshaller = m
+		opts.DefaultPublishOptions.Marshaller = m
+	}
+}
+func WithDefaultQueue(queue string) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.DefaultHandlerOptions.Queue = queue
+	}
 }
 
-// NewEventHandlerOptionsBuilder creates a new EventHandlerOptionsBuilder
-func NewEventHandlerOptionsBuilder() *EventHandlerOptionsBuilder {
-	return &EventHandlerOptionsBuilder{
-		opts: EventHandlerOptions{
+// EventHandlerOption is a functional option for configuring EventHandlerOptions
+type EventHandlerOption func(*EventHandlerOptions)
+
+func WithHandlerMarshaller(m marshaller.PayloadMarshaller) EventHandlerOption {
+	return func(opts *EventHandlerOptions) {
+		opts.Marshaller = m
+	}
+}
+func WithHandlerQueue(queue string) EventHandlerOption {
+	return func(opts *EventHandlerOptions) {
+		opts.Queue = queue
+	}
+}
+func WithHandlerJetStream(jsOpts ...JetStreamEventOption) EventHandlerOption {
+	return func(opts *EventHandlerOptions) {
+		for _, opt := range jsOpts {
+			opt(&opts.JetStream)
+		}
+	}
+}
+
+// JetStreamEventOption is a functional option for configuring JetStreamEventOptions
+type JetStreamEventOption func(*JetStreamEventOptions)
+
+func WithJSEnabled(enabled bool) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.Enabled = enabled
+	}
+}
+func WithJSAutoAck(autoAck bool) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.AutoAck = autoAck
+	}
+}
+func WithJSPull(pull bool) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.Pull = pull
+	}
+}
+func WithJSPullBatch(batch int) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.PullBatch = batch
+	}
+}
+func WithJSPullExpire(expire time.Duration) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.PullExpire = expire
+	}
+}
+func WithJSPullRetryDelay(delay time.Duration) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.PullRetryDelay = delay
+	}
+}
+func WithJSDurable(durable string) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.Durable = durable
+	}
+}
+func WithJSDeliverGroup(group string) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.DeliverGroup = group
+	}
+}
+func WithJSSubjectTransform(fn func(subject string) string) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.SubjectTransform = fn
+	}
+}
+func WithJSSubscribeOptions(subOpts ...nats.SubOpt) JetStreamEventOption {
+	return func(opts *JetStreamEventOptions) {
+		opts.SubscribeOptions = append(opts.SubscribeOptions, subOpts...)
+	}
+}
+
+// EventPublishOption is a functional option for configuring EventPublishOptions
+type EventPublishOption func(*EventPublishOptions)
+
+func WithPublishMarshaller(m marshaller.PayloadMarshaller) EventPublishOption {
+	return func(opts *EventPublishOptions) {
+		opts.Marshaller = m
+	}
+}
+func WithPublishHeader(key, value string) EventPublishOption {
+	return func(opts *EventPublishOptions) {
+		if opts.Headers == nil {
+			opts.Headers = make(nats.Header)
+		}
+		opts.Headers.Add(key, value)
+	}
+}
+func WithPublishHeaders(headers nats.Header) EventPublishOption {
+	return func(opts *EventPublishOptions) {
+		if opts.Headers == nil {
+			opts.Headers = make(nats.Header)
+		}
+		for k, v := range headers {
+			opts.Headers[k] = append(opts.Headers[k], v...)
+		}
+	}
+}
+func WithPublishJetStreamOptions(pubOpts ...nats.PubOpt) EventPublishOption {
+	return func(opts *EventPublishOptions) {
+		opts.JetStream = append(opts.JetStream, pubOpts...)
+	}
+}
+
+// NewEventHandlerOptions creates EventHandlerOptions from functional options
+func NewEventHandlerOptions(opts ...EventHandlerOption) EventHandlerOptions {
+	handlerOpts := EventHandlerOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+		JetStream: JetStreamEventOptions{
+			AutoAck: true,
+		},
+	}
+	for _, opt := range opts {
+		opt(&handlerOpts)
+	}
+	return handlerOpts
+}
+
+// NewEventPublishOptions creates EventPublishOptions from functional options
+func NewEventPublishOptions(opts ...EventPublishOption) EventPublishOptions {
+	publishOpts := EventPublishOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+		Headers:    make(nats.Header),
+		JetStream:  make([]nats.PubOpt, 0),
+	}
+	for _, opt := range opts {
+		opt(&publishOpts)
+	}
+	return publishOpts
+}
+
+// NewEventsOptions creates EventsOptions from functional options
+func NewEventsOptions(opts ...EventsOption) EventsOptions {
+	eventsOpts := EventsOptions{
+		DefaultHandlerOptions: EventHandlerOptions{
 			Marshaller: marshaller.DefaultJsonMarshaller,
 			JetStream: JetStreamEventOptions{
 				AutoAck: true,
 			},
 		},
-	}
-}
-func (b *EventHandlerOptionsBuilder) WithMarshaller(m marshaller.PayloadMarshaller) *EventHandlerOptionsBuilder {
-	b.opts.Marshaller = m
-	return b
-}
-func (b *EventHandlerOptionsBuilder) WithQueue(queue string) *EventHandlerOptionsBuilder {
-	b.opts.Queue = queue
-	return b
-}
-func (b *EventHandlerOptionsBuilder) WithJetStream(fn func(*JetStreamEventOptionsBuilder)) *EventHandlerOptionsBuilder {
-	jsBuilder := NewJetStreamEventOptionsBuilder()
-	jsBuilder.opts = b.opts.JetStream
-	fn(jsBuilder)
-	b.opts.JetStream = jsBuilder.Build()
-	return b
-}
-func (b *EventHandlerOptionsBuilder) Build() EventHandlerOptions {
-	return b.opts
-}
-
-type JetStreamEventOptionsBuilder struct {
-	opts JetStreamEventOptions
-}
-
-const (
-	defaultPullBatchSize    = 1
-	defaultPullFetchMaxWait = time.Second
-	defaultPullRetryDelay   = 100 * time.Millisecond
-)
-
-// NewJetStreamEventOptionsBuilder creates a new JetStreamEventOptionsBuilder
-func NewJetStreamEventOptionsBuilder() *JetStreamEventOptionsBuilder {
-	return &JetStreamEventOptionsBuilder{
-		opts: JetStreamEventOptions{
-			AutoAck:          true,
-			PullBatch:        defaultPullBatchSize,
-			PullExpire:       defaultPullFetchMaxWait,
-			PullRetryDelay:   defaultPullRetryDelay,
-			SubscribeOptions: make([]nats.SubOpt, 0),
-		},
-	}
-}
-func (b *JetStreamEventOptionsBuilder) Enabled() *JetStreamEventOptionsBuilder {
-	b.opts.Enabled = true
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) Disabled() *JetStreamEventOptionsBuilder {
-	b.opts.Enabled = false
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithAutoAck(autoAck bool) *JetStreamEventOptionsBuilder {
-	b.opts.AutoAck = autoAck
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithPull(pull bool) *JetStreamEventOptionsBuilder {
-	b.opts.Pull = pull
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithPullBatch(batch int) *JetStreamEventOptionsBuilder {
-	b.opts.PullBatch = batch
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithPullExpire(expire time.Duration) *JetStreamEventOptionsBuilder {
-	b.opts.PullExpire = expire
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithPullRetryDelay(delay time.Duration) *JetStreamEventOptionsBuilder {
-	b.opts.PullRetryDelay = delay
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithDurable(durable string) *JetStreamEventOptionsBuilder {
-	b.opts.Durable = durable
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithDeliverGroup(group string) *JetStreamEventOptionsBuilder {
-	b.opts.DeliverGroup = group
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithSubjectTransform(fn func(subject string) string) *JetStreamEventOptionsBuilder {
-	b.opts.SubjectTransform = fn
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) WithSubscribeOptions(opts ...nats.SubOpt) *JetStreamEventOptionsBuilder {
-	b.opts.SubscribeOptions = append(b.opts.SubscribeOptions, opts...)
-	return b
-}
-func (b *JetStreamEventOptionsBuilder) Build() JetStreamEventOptions {
-	return b.opts
-}
-
-type EventPublishOptionsBuilder struct {
-	opts EventPublishOptions
-}
-
-// NewEventPublishOptionsBuilder creates a new EventPublishOptionsBuilder
-func NewEventPublishOptionsBuilder() *EventPublishOptionsBuilder {
-	return &EventPublishOptionsBuilder{
-		opts: EventPublishOptions{
+		DefaultPublishOptions: EventPublishOptions{
 			Marshaller: marshaller.DefaultJsonMarshaller,
-			Headers:    make(nats.Header),
-			JetStream:  make([]nats.PubOpt, 0),
 		},
+		JetStreamOptions: make([]nats.JSOpt, 0),
 	}
-}
-func (b *EventPublishOptionsBuilder) WithMarshaller(m marshaller.PayloadMarshaller) *EventPublishOptionsBuilder {
-	b.opts.Marshaller = m
-	return b
-}
-func (b *EventPublishOptionsBuilder) WithHeader(key, value string) *EventPublishOptionsBuilder {
-	if b.opts.Headers == nil {
-		b.opts.Headers = make(nats.Header)
+	for _, opt := range opts {
+		opt(&eventsOpts)
 	}
-	b.opts.Headers.Add(key, value)
-	return b
-}
-func (b *EventPublishOptionsBuilder) WithHeaders(headers nats.Header) *EventPublishOptionsBuilder {
-	if b.opts.Headers == nil {
-		b.opts.Headers = make(nats.Header)
-	}
-	for k, v := range headers {
-		b.opts.Headers[k] = append(b.opts.Headers[k], v...)
-	}
-	return b
-}
-func (b *EventPublishOptionsBuilder) WithJetStreamOptions(opts ...nats.PubOpt) *EventPublishOptionsBuilder {
-	b.opts.JetStream = append(b.opts.JetStream, opts...)
-	return b
-}
-func (b *EventPublishOptionsBuilder) Build() EventPublishOptions {
-	return b.opts
-}
-
-type EventsOptionsBuilder struct {
-	opts EventsOptions
-}
-
-// NewEventsOptionsBuilder creates a new EventsOptionsBuilder
-func NewEventsOptionsBuilder() *EventsOptionsBuilder {
-	return &EventsOptionsBuilder{
-		opts: EventsOptions{
-			DefaultHandlerOptions: EventHandlerOptions{
-				Marshaller: marshaller.DefaultJsonMarshaller,
-				JetStream: JetStreamEventOptions{
-					AutoAck: true,
-				},
-			},
-			DefaultPublishOptions: EventPublishOptions{
-				Marshaller: marshaller.DefaultJsonMarshaller,
-			},
-			JetStreamOptions: make([]nats.JSOpt, 0),
-		},
-	}
-}
-func (b *EventsOptionsBuilder) WithDefaultHandlerOptions(fn func(*EventHandlerOptionsBuilder)) *EventsOptionsBuilder {
-	handlerBuilder := NewEventHandlerOptionsBuilder()
-	handlerBuilder.opts = b.opts.DefaultHandlerOptions
-	fn(handlerBuilder)
-	b.opts.DefaultHandlerOptions = handlerBuilder.Build()
-	return b
-}
-func (b *EventsOptionsBuilder) WithDefaultPublishOptions(fn func(*EventPublishOptionsBuilder)) *EventsOptionsBuilder {
-	publishBuilder := NewEventPublishOptionsBuilder()
-	publishBuilder.opts = b.opts.DefaultPublishOptions
-	fn(publishBuilder)
-	b.opts.DefaultPublishOptions = publishBuilder.Build()
-	return b
-}
-func (b *EventsOptionsBuilder) WithJetStream(js nats.JetStreamContext) *EventsOptionsBuilder {
-	b.opts.JetStream = js
-	return b
-}
-func (b *EventsOptionsBuilder) WithJetStreamOptions(opts ...nats.JSOpt) *EventsOptionsBuilder {
-	b.opts.JetStreamOptions = append(b.opts.JetStreamOptions, opts...)
-	return b
-}
-func (b *EventsOptionsBuilder) Build() EventsOptions {
-	return b.opts
+	return eventsOpts
 }

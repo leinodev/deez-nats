@@ -19,7 +19,7 @@ func TestEventRouterDFS(t *testing.T) {
 
 	router.AddEventHandler("health", func(ctx EventContext) error {
 		return nil
-	}, nil)
+	})
 
 	entityGroup := router.Group("entity")
 	entityGroup.Use(func(next EventHandleFunc) EventHandleFunc {
@@ -28,18 +28,16 @@ func TestEventRouterDFS(t *testing.T) {
 
 	entityGroup.AddEventHandler("created", func(ctx EventContext) error {
 		return nil
-	}, nil)
+	})
 
 	logGroup := entityGroup.Group("log")
 	logGroup.AddEventHandler("added", func(ctx EventContext) error {
 		return nil
-	}, &EventHandlerOptions{
-		JetStream: JetStreamEventOptions{
-			Enabled: true,
-			Pull:    true,
-			Durable: "log-added",
-		},
-	})
+	}, WithHandlerJetStream(
+		WithJSEnabled(true),
+		WithJSPull(true),
+		WithJSDurable("log-added"),
+	))
 
 	routes := router.dfs()
 

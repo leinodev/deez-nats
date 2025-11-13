@@ -14,13 +14,14 @@ type NatsRPC interface {
 	RPCRouter
 
 	StartWithContext(ctx context.Context) error
-	CallRPC(ctx context.Context, subj string, request any, response any, opts CallOptions) error
+	CallRPC(ctx context.Context, subj string, request any, response any, opts ...CallOption) error
 	Shutdown(ctx context.Context) error
 }
 
 type RPCRouter interface {
 	Use(middlewares ...RpcMiddlewareFunc)
-	AddRPCHandler(method string, handler RpcHandleFunc, opts *HandlerOptions, middlewares ...RpcMiddlewareFunc)
+	AddRPCHandler(method string, handler RpcHandleFunc, opts ...HandlerOption)
+	AddRPCHandlerWithMiddlewares(method string, handler RpcHandleFunc, middlewares []RpcMiddlewareFunc, opts ...HandlerOption)
 	Group(group string) RPCRouter
 
 	dfs() []rpcInfo
@@ -41,7 +42,8 @@ type RPCContext interface {
 }
 
 type HandlerOptions struct {
-	Marshaller marshaller.PayloadMarshaller
+	Marshaller  marshaller.PayloadMarshaller
+	middlewares []RpcMiddlewareFunc
 }
 
 type CallOptions struct {

@@ -23,26 +23,14 @@ func (c *eventContextImpl) Event(data any) error {
 	return c.Unmarshal(data)
 }
 func (c *eventContextImpl) Ack(opts ...nats.AckOpt) error {
-	if c.Message() == nil {
-		return nil
-	}
 	return c.Message().Ack(opts...)
 }
 func (c *eventContextImpl) Nak(opts ...nats.AckOpt) error {
-	if c.Message() == nil {
-		return nil
-	}
 	return c.Message().Nak(opts...)
 }
 func (c *eventContextImpl) Term(opts ...nats.AckOpt) error {
-	if c.Message() == nil {
-		return nil
-	}
 	return c.Message().Term(opts...)
 }
 func (c *eventContextImpl) InProgress(opts ...nats.AckOpt) error {
-	if c.Message() == nil {
-		return nil
-	}
 	return c.Message().InProgress(opts...)
 }

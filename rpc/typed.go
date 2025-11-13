@@ -2,27 +2,16 @@ package rpc
 
 import "github.com/leinodev/deez-nats/marshaller"
 
-type TypedRPCHandlerOptions struct {
-	HandlerOptions
-}
-
 type TypedRPCHandler[Req any, Resp any] func(ctx RPCContext, request Req) (Resp, error)
 
 func AddTypedRPCHandler[Req any, Resp any](
 	router RPCRouter,
 	method string,
 	handler TypedRPCHandler[Req, Resp],
-	opts *TypedRPCHandlerOptions,
-	middlewares ...RpcMiddlewareFunc,
+	opts ...HandlerOption,
 ) {
 	if handler == nil {
 		panic("typed rpc handler is nil")
-	}
-
-	var baseOpts *HandlerOptions
-	if opts != nil {
-		optCopy := opts.HandlerOptions
-		baseOpts = &optCopy
 	}
 
 	wrapped := func(ctx RPCContext) error {
@@ -39,7 +28,11 @@ func AddTypedRPCHandler[Req any, Resp any](
 		return ctx.Ok(response)
 	}
 
-	router.AddRPCHandler(method, wrapped, baseOpts, middlewares...)
+	if len(opts) > 0 {
+		router.AddRPCHandler(method, wrapped, opts...)
+	} else {
+		router.AddRPCHandler(method, wrapped)
+	}
 }
 
 func AddTypedRPCHandlerWithMarshaller[Req any, Resp any](
@@ -47,30 +40,26 @@ func AddTypedRPCHandlerWithMarshaller[Req any, Resp any](
 	method string,
 	handler TypedRPCHandler[Req, Resp],
 	marshaller marshaller.PayloadMarshaller,
-	middlewares ...RpcMiddlewareFunc,
+	opts ...HandlerOption,
 ) {
-	opts := &TypedRPCHandlerOptions{
-		HandlerOptions: HandlerOptions{
-			Marshaller: marshaller,
-		},
-	}
-	AddTypedRPCHandler(router, method, handler, opts, middlewares...)
+	allOpts := append([]HandlerOption{WithHandlerMarshaller(marshaller)}, opts...)
+	AddTypedRPCHandler(router, method, handler, allOpts...)
 }
 
 func AddTypedJsonRPCHandler[Req any, Resp any](
 	router RPCRouter,
 	method string,
 	handler TypedRPCHandler[Req, Resp],
-	middlewares ...RpcMiddlewareFunc,
+	opts ...HandlerOption,
 ) {
-	AddTypedRPCHandlerWithMarshaller(router, method, handler, marshaller.DefaultJsonMarshaller, middlewares...)
+	AddTypedRPCHandlerWithMarshaller(router, method, handler, marshaller.DefaultJsonMarshaller, opts...)
 }
 
 func AddTypedProtoRPCHandler[Req any, Resp any](
 	router RPCRouter,
 	method string,
 	handler TypedRPCHandler[Req, Resp],
-	middlewares ...RpcMiddlewareFunc,
+	opts ...HandlerOption,
 ) {
-	AddTypedRPCHandlerWithMarshaller(router, method, handler, marshaller.DefaultProtoMarshaller, middlewares...)
+	AddTypedRPCHandlerWithMarshaller(router, method, handler, marshaller.DefaultProtoMarshaller, opts...)
 }

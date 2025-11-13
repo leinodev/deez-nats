@@ -2,27 +2,16 @@ package events
 
 import "github.com/leinodev/deez-nats/marshaller"
 
-type TypedEventHandlerOptions struct {
-	EventHandlerOptions
-}
-
 type TypedEventHandler[T any] func(ctx EventContext, payload T) error
 
 func AddTypedEventHandler[T any](
 	router EventRouter,
 	subject string,
 	handler TypedEventHandler[T],
-	opts *TypedEventHandlerOptions,
-	middlewares ...EventMiddlewareFunc,
+	opts ...EventHandlerOption,
 ) {
 	if handler == nil {
 		panic("typed event handler is nil")
-	}
-
-	var baseOpts *EventHandlerOptions
-	if opts != nil {
-		optCopy := opts.EventHandlerOptions
-		baseOpts = &optCopy
 	}
 
 	wrapped := func(ctx EventContext) error {
@@ -34,7 +23,7 @@ func AddTypedEventHandler[T any](
 		return handler(ctx, payload)
 	}
 
-	router.AddEventHandler(subject, wrapped, baseOpts, middlewares...)
+	router.AddEventHandler(subject, wrapped, opts...)
 }
 
 func AddTypedEventHandlerWithMarshaller[T any](
@@ -42,30 +31,26 @@ func AddTypedEventHandlerWithMarshaller[T any](
 	subject string,
 	handler TypedEventHandler[T],
 	marshaller marshaller.PayloadMarshaller,
-	middlewares ...EventMiddlewareFunc,
+	opts ...EventHandlerOption,
 ) {
-	opts := &TypedEventHandlerOptions{
-		EventHandlerOptions: EventHandlerOptions{
-			Marshaller: marshaller,
-		},
-	}
-	AddTypedEventHandler(router, subject, handler, opts, middlewares...)
+	allOpts := append([]EventHandlerOption{WithHandlerMarshaller(marshaller)}, opts...)
+	AddTypedEventHandler(router, subject, handler, allOpts...)
 }
 
 func AddTypedJsonEventHandler[T any](
 	router EventRouter,
 	subject string,
 	handler TypedEventHandler[T],
-	middlewares ...EventMiddlewareFunc,
+	opts ...EventHandlerOption,
 ) {
-	AddTypedEventHandlerWithMarshaller(router, subject, handler, marshaller.DefaultJsonMarshaller, middlewares...)
+	AddTypedEventHandlerWithMarshaller(router, subject, handler, marshaller.DefaultJsonMarshaller, opts...)
 }
 
 func AddTypedProtoEventHandler[T any](
 	router EventRouter,
 	subject string,
 	handler TypedEventHandler[T],
-	middlewares ...EventMiddlewareFunc,
+	opts ...EventHandlerOption,
 ) {
-	AddTypedEventHandlerWithMarshaller(router, subject, handler, marshaller.DefaultProtoMarshaller, middlewares...)
+	AddTypedEventHandlerWithMarshaller(router, subject, handler, marshaller.DefaultProtoMarshaller, opts...)
 }

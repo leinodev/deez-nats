@@ -25,8 +25,8 @@ go get github.com/leinodev/deez-nats
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewNatsEvents(nc, nil)
-rpcSvc := rpc.NewNatsRPC(nc, nil)
+eventsSvc := events.NewNatsEvents(nc)
+rpcSvc := rpc.NewNatsRPC(nc)
 
 rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     var req PingRequest
@@ -34,7 +34,7 @@ rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
         return err
     }
     return ctx.Ok(PingResponse{Message: "pong"})
-}, nil)
+})
 
 eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
     var payload UserCreatedEvent
@@ -43,7 +43,7 @@ eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
     }
     fmt.Printf("created: %#v\n", payload)
     return nil
-}, nil)
+})
 
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
@@ -51,9 +51,9 @@ defer cancel()
 go rpcSvc.StartWithContext(ctx)
 go eventsSvc.StartWithContext(ctx)
 
-_ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"}, nil)
+_ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"})
 var resp PingResponse
-_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
+_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp)
 ```
 
 ## RPC
@@ -66,23 +66,35 @@ _ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptio
   - `Headers()` и `RequestHeaders()` — работа с заголовками.
 - `CallRPC` инкапсулирует запрос с таймаутом NATS и десериализацией респондов.
 - Для generics используйте `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler` или `AddTypedRPCHandler` с кастомным маршаллизатором.
+- Используйте `rpc.WithHandlerMiddlewares(...)` для добавления middlewares к конкретным обработчикам.
 
-### Билдер опций RPC
+### Опции RPC
 
-Используйте `rpc.NewRPCOptionsBuilder()` для настройки опций RPC-сервиса:
+Используйте функциональные опции для настройки RPC-сервиса:
 
 ```go
-opts := rpc.NewRPCOptionsBuilder().
-    WithBaseRoute("myservice").
-    WithDefaultHandlerOptions(func(b *rpc.HandlerOptionsBuilder) {
-        b.WithMarshaller(customMarshaller)
-    }).
-    WithDefaultCallOptions(func(b *rpc.CallOptionsBuilder) {
-        b.WithHeader("X-Service", "my-service")
-    }).
-    Build()
+rpcSvc := rpc.NewNatsRPC(nc,
+    rpc.WithBaseRoute("myservice"),
+    rpc.WithDefaultHandlerMarshaller(customMarshaller),
+    rpc.WithDefaultCallOptions(
+        rpc.WithCallHeader("X-Service", "my-service"),
+    ),
+)
 
-rpcSvc := rpc.NewNatsRPC(nc, &opts)
+// Добавить обработчик с middlewares
+rpcSvc.AddRPCHandler("user.get", handler,
+    rpc.WithHandlerMarshaller(customMarshaller),
+    rpc.WithHandlerMiddlewares(
+        authMiddleware,
+        loggingMiddleware,
+    ),
+)
+
+// Вызов RPC с опциями
+rpcSvc.CallRPC(ctx, "user.ping", request, &response,
+    rpc.WithCallHeader("X-Request-ID", "123"),
+    rpc.WithCallMarshaller(customMarshaller),
+)
 ```
 
 ## События
@@ -94,31 +106,48 @@ rpcSvc := rpc.NewNatsRPC(nc, &opts)
   - `Event(&payload)` — десериализация сообщения;
   - `Ack/Nak/Term/InProgress` — управление delivery в JetStream;
   - доступ к `Headers()` и исходному `*nats.Msg`.
-- Эмиссия событий через `Emit(ctx, subject, payload, opts)`; можно передать заголовки и `nats.PubOpt`.
+- Эмиссия событий через `Emit(ctx, subject, payload, opts...)`; можно передать заголовки и JetStream опции через функциональные опции.
 - Типизированные обёртки: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
 
-### Билдер опций Events
+### Опции Events
 
-Используйте `events.NewEventsOptionsBuilder()` для настройки опций сервиса событий:
+Используйте функциональные опции для настройки сервиса событий:
 
 ```go
-opts := events.NewEventsOptionsBuilder().
-    WithJetStream(js).
-    WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
-        b.WithQueue("my-queue").
-          WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
-              jsb.Enabled().
-                  WithAutoAck(true).
-                  WithDurable("my-consumer")
-          })
-    }).
-    WithDefaultPublishOptions(func(b *events.EventPublishOptionsBuilder) {
-        b.WithMarshaller(customMarshaller).
-          WithHeader("X-Source", "my-service")
-    }).
-    Build()
+eventsSvc := events.NewNatsEvents(nc,
+    events.WithJetStreamContext(js),
+    events.WithTimeout(time.Second),
+    events.WithJetStream(true),
+    events.WithAutoAck(true),
+    events.WithDefaultHandlerOptions(
+        events.WithHandlerQueue("my-queue"),
+        events.WithHandlerJetStream(
+            events.WithJSEnabled(true),
+            events.WithJSAutoAck(true),
+            events.WithJSDurable("my-consumer"),
+        ),
+    ),
+    events.WithDefaultPublishOptions(
+        events.WithPublishMarshaller(customMarshaller),
+        events.WithPublishHeader("X-Source", "my-service"),
+    ),
+)
 
-eventsSvc := events.NewNatsEvents(nc, &opts)
+// Добавить обработчик с JetStream опциями
+eventsSvc.AddEventHandler("entity.created", handler,
+    events.WithHandlerJetStream(
+        events.WithJSEnabled(true),
+        events.WithJSAutoAck(true),
+        events.WithJSDurable("entity-created-consumer"),
+        events.WithJSDeliverGroup("entity-events"),
+    ),
+)
+
+// Эмиссия события с опциями
+eventsSvc.Emit(ctx, "user.created", payload,
+    events.WithPublishHeader("X-Source", "my-service"),
+    events.WithPublishJetStreamOptions(nats.MsgId("msg-id")),
+)
 ```
 
 ## Graceful Shutdown
@@ -155,8 +184,8 @@ func main() {
     nc, _ := nats.Connect(nats.DefaultURL)
     defer nc.Close()
 
-    eventService := events.NewNatsEvents(nc, nil)
-    rpcService := rpc.NewNatsRPC(nc, nil)
+    eventService := events.NewNatsEvents(nc)
+    rpcService := rpc.NewNatsRPC(nc)
 
     // ... настройка обработчиков ...
 

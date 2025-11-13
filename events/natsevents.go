@@ -35,15 +35,29 @@ type natsEventsImpl struct {
 	shutdownFunc context.CancelFunc
 }
 
-func NewNatsEvents(nc *nats.Conn, opts *EventsOptions) NatsEvents {
-	if opts == nil {
-		defaultOpts := NewEventsOptionsBuilder().Build()
-		opts = &defaultOpts
+func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
+	// Create default options
+	options := EventsOptions{
+		DefaultHandlerOptions: EventHandlerOptions{
+			Marshaller: marshaller.DefaultJsonMarshaller,
+			JetStream: JetStreamEventOptions{
+				AutoAck: true,
+			},
+		},
+		DefaultPublishOptions: EventPublishOptions{
+			Marshaller: marshaller.DefaultJsonMarshaller,
+		},
+		JetStreamOptions: make([]nats.JSOpt, 0),
+	}
+
+	// Apply functional options
+	for _, opt := range opts {
+		opt(&options)
 	}
 
 	e := &natsEventsImpl{
 		nc:              nc,
-		options:         *opts,
+		options:         options,
 		lifecycleMgr:    lifecycle.NewManager(),
 		subscriptionMgr: subscriptions.NewManager(),
 		shutdownMgr:     graceful.NewShutdownManager(),
@@ -59,8 +73,12 @@ func (e *natsEventsImpl) Use(middlewares ...EventMiddlewareFunc) {
 	e.rootRouter.Use(middlewares...)
 }
 
-func (e *natsEventsImpl) AddEventHandler(subject string, handler EventHandleFunc, opts *EventHandlerOptions, middlewares ...EventMiddlewareFunc) {
-	e.rootRouter.AddEventHandler(subject, handler, opts, middlewares...)
+func (e *natsEventsImpl) AddEventHandler(subject string, handler EventHandleFunc, opts ...EventHandlerOption) {
+	e.rootRouter.AddEventHandler(subject, handler, opts...)
+}
+
+func (e *natsEventsImpl) AddEventHandlerWithMiddlewares(subject string, handler EventHandleFunc, middlewares []EventMiddlewareFunc, opts ...EventHandlerOption) {
+	e.rootRouter.AddEventHandlerWithMiddlewares(subject, handler, middlewares, opts...)
 }
 
 func (e *natsEventsImpl) Group(group string) EventRouter {
@@ -270,12 +288,12 @@ func (e *natsEventsImpl) handleHandlerSuccess(eventCtx EventContext, jsOpts JetS
 	}
 }
 
-func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error {
+func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, opts ...EventPublishOption) error {
 	if subject == "" {
 		return ErrEmptySubject
 	}
 
-	publishOpts := e.mergePublishOptions(opts)
+	publishOpts := e.mergePublishOptions(opts...)
 	payloadBytes, err := publishOpts.Marshaller.Marshall(&marshaller.MarshalObject{
 		Data: payload,
 	})
@@ -292,19 +310,12 @@ func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, 
 	return e.publishMessage(ctx, msg, publishOpts)
 }
 
-func (e *natsEventsImpl) mergePublishOptions(opts *EventPublishOptions) EventPublishOptions {
+func (e *natsEventsImpl) mergePublishOptions(opts ...EventPublishOption) EventPublishOptions {
 	merged := e.options.DefaultPublishOptions
 
-	if opts != nil {
-		if opts.Headers != nil {
-			merged.Headers = opts.Headers
-		}
-		if len(opts.JetStream) > 0 {
-			merged.JetStream = append([]nats.PubOpt(nil), opts.JetStream...)
-		}
-		if opts.Marshaller != nil {
-			merged.Marshaller = opts.Marshaller
-		}
+	// Apply functional options
+	for _, opt := range opts {
+		opt(&merged)
 	}
 
 	if merged.Marshaller == nil {

@@ -27,8 +27,8 @@ Requires Go 1.21+ (the module is built with `go 1.25`).
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewNatsEvents(nc, nil)
-rpcSvc := rpc.NewNatsRPC(nc, nil)
+eventsSvc := events.NewNatsEvents(nc)
+rpcSvc := rpc.NewNatsRPC(nc)
 
 rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     var req PingRequest
@@ -36,7 +36,7 @@ rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
         return err
     }
     return ctx.Ok(PingResponse{Message: "pong"})
-}, nil)
+})
 
 eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
     var payload UserCreatedEvent
@@ -45,7 +45,7 @@ eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
     }
     fmt.Printf("created: %#v\n", payload)
     return nil
-}, nil)
+})
 
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
@@ -53,9 +53,9 @@ defer cancel()
 go rpcSvc.StartWithContext(ctx)
 go eventsSvc.StartWithContext(ctx)
 
-_ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"}, nil)
+_ = eventsSvc.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"})
 var resp PingResponse
-_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
+_ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp)
 ```
 
 ## RPC
@@ -68,23 +68,35 @@ _ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptio
   - `Headers()` and `RequestHeaders()` — working with headers.
 - `CallRPC` wraps a request with NATS timeout handling and response deserialization.
 - For generics, use `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler`, or `AddTypedRPCHandler` with your custom marshaller.
+- Use `rpc.WithHandlerMiddlewares(...)` to add middlewares to specific handlers.
 
-### RPC Options Builder
+### RPC Options
 
-Use `rpc.NewRPCOptionsBuilder()` to configure RPC service options:
+Use functional options to configure RPC service:
 
 ```go
-opts := rpc.NewRPCOptionsBuilder().
-    WithBaseRoute("myservice").
-    WithDefaultHandlerOptions(func(b *rpc.HandlerOptionsBuilder) {
-        b.WithMarshaller(customMarshaller)
-    }).
-    WithDefaultCallOptions(func(b *rpc.CallOptionsBuilder) {
-        b.WithHeader("X-Service", "my-service")
-    }).
-    Build()
+rpcSvc := rpc.NewNatsRPC(nc,
+    rpc.WithBaseRoute("myservice"),
+    rpc.WithDefaultHandlerMarshaller(customMarshaller),
+    rpc.WithDefaultCallOptions(
+        rpc.WithCallHeader("X-Service", "my-service"),
+    ),
+)
 
-rpcSvc := rpc.NewNatsRPC(nc, &opts)
+// Add handler with middlewares
+rpcSvc.AddRPCHandler("user.get", handler,
+    rpc.WithHandlerMarshaller(customMarshaller),
+    rpc.WithHandlerMiddlewares(
+        authMiddleware,
+        loggingMiddleware,
+    ),
+)
+
+// Call RPC with options
+rpcSvc.CallRPC(ctx, "user.ping", request, &response,
+    rpc.WithCallHeader("X-Request-ID", "123"),
+    rpc.WithCallMarshaller(customMarshaller),
+)
 ```
 
 ## Events
@@ -96,31 +108,48 @@ rpcSvc := rpc.NewNatsRPC(nc, &opts)
   - `Event(&payload)` — message deserialization;
   - `Ack/Nak/Term/InProgress` — JetStream delivery control;
   - access to `Headers()` and the original `*nats.Msg`.
-- Emit events with `Emit(ctx, subject, payload, opts)`; you can include headers and `nats.PubOpt`.
+- Emit events with `Emit(ctx, subject, payload, opts...)`; you can include headers and JetStream options via functional options.
 - Typed helpers: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
 
-### Events Options Builder
+### Events Options
 
-Use `events.NewEventsOptionsBuilder()` to configure event service options:
+Use functional options to configure event service:
 
 ```go
-opts := events.NewEventsOptionsBuilder().
-    WithJetStream(js).
-    WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
-        b.WithQueue("my-queue").
-          WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
-              jsb.Enabled().
-                  WithAutoAck(true).
-                  WithDurable("my-consumer")
-          })
-    }).
-    WithDefaultPublishOptions(func(b *events.EventPublishOptionsBuilder) {
-        b.WithMarshaller(customMarshaller).
-          WithHeader("X-Source", "my-service")
-    }).
-    Build()
+eventsSvc := events.NewNatsEvents(nc,
+    events.WithJetStreamContext(js),
+    events.WithTimeout(time.Second),
+    events.WithJetStream(true),
+    events.WithAutoAck(true),
+    events.WithDefaultHandlerOptions(
+        events.WithHandlerQueue("my-queue"),
+        events.WithHandlerJetStream(
+            events.WithJSEnabled(true),
+            events.WithJSAutoAck(true),
+            events.WithJSDurable("my-consumer"),
+        ),
+    ),
+    events.WithDefaultPublishOptions(
+        events.WithPublishMarshaller(customMarshaller),
+        events.WithPublishHeader("X-Source", "my-service"),
+    ),
+)
 
-eventsSvc := events.NewNatsEvents(nc, &opts)
+// Add handler with JetStream options
+eventsSvc.AddEventHandler("entity.created", handler,
+    events.WithHandlerJetStream(
+        events.WithJSEnabled(true),
+        events.WithJSAutoAck(true),
+        events.WithJSDurable("entity-created-consumer"),
+        events.WithJSDeliverGroup("entity-events"),
+    ),
+)
+
+// Emit event with options
+eventsSvc.Emit(ctx, "user.created", payload,
+    events.WithPublishHeader("X-Source", "my-service"),
+    events.WithPublishJetStreamOptions(nats.MsgId("msg-id")),
+)
 ```
 
 ## Graceful Shutdown
@@ -157,8 +186,8 @@ func main() {
     nc, _ := nats.Connect(nats.DefaultURL)
     defer nc.Close()
 
-    eventService := events.NewNatsEvents(nc, nil)
-    rpcService := rpc.NewNatsRPC(nc, nil)
+    eventService := events.NewNatsEvents(nc)
+    rpcService := rpc.NewNatsRPC(nc)
 
     // ... configure handlers ...
 

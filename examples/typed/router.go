@@ -10,7 +10,7 @@ import (
 )
 
 func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
-	service := rpc.NewNatsRPC(nc, nil)
+	service := rpc.NewNatsRPC(nc)
 
 	rpc.AddTypedJsonRPCHandler(service, "user.get", func(ctx rpc.RPCContext, request GetUserRequest) (GetUserResponse, error) {
 		if request.ID == "" {
@@ -23,7 +23,7 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 			ID:   request.ID,
 			Name: "Typed Example",
 		}, nil
-	}, nil)
+	})
 
 	rpc.AddTypedJsonRPCHandler(service, "user.update", func(ctx rpc.RPCContext, request UpdateUserRequest) (UpdateUserResponse, error) {
 		if request.ID == "" {
@@ -41,19 +41,15 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 }
 
 func NewEventRouter(nc *nats.Conn) events.NatsEvents {
-	opts := events.NewEventsOptionsBuilder().
-		WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
-			b.WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
-				jsb.Enabled().WithAutoAck(true)
-			})
-		}).
-		Build()
-	service := events.NewNatsEvents(nc, &opts)
+	service := events.NewNatsEvents(nc,
+		events.WithJetStream(true),
+		events.WithAutoAck(true),
+	)
 
 	events.AddTypedEventHandler(service, "user.created", func(ctx events.EventContext, payload UserCreatedEvent) error {
 		fmt.Printf("user created via typed handler: %#v\n", payload)
 		return nil
-	}, nil)
+	})
 
 	events.AddTypedJsonEventHandler(service, "user.renamed", func(ctx events.EventContext, payload UserRenamedEvent) error {
 		fmt.Printf("user renamed via typed handler with marshaller: %#v\n", payload)

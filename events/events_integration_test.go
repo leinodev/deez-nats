@@ -19,7 +19,7 @@ type sampleEvent struct {
 func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewNatsEvents(nc, nil)
+	evts := NewNatsEvents(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.basic.%d", time.Now().UnixNano())
@@ -35,7 +35,7 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 		default:
 		}
 		return nil
-	}, nil)
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startErr := make(chan error, 1)
@@ -50,7 +50,7 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 		Name: "basic-event",
 	}
 
-	if err := evts.Emit(context.Background(), subject, want, nil); err != nil {
+	if err := evts.Emit(context.Background(), subject, want); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 
@@ -88,18 +88,9 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		_ = js.DeleteStream(streamName)
 	})
 
-	opts := NewEventsOptionsBuilder().
-		WithJetStream(js).
-		Build()
-	evts := NewNatsEvents(nc, &opts)
+	evts := NewNatsEvents(nc, WithJetStreamContext(js))
 
 	received := make(chan sampleEvent, 1)
-	handlerOpts := &EventHandlerOptions{
-		JetStream: JetStreamEventOptions{
-			Enabled: true,
-			AutoAck: true,
-		},
-	}
 
 	evts.AddEventHandler(subject, func(ctx EventContext) error {
 		var payload sampleEvent
@@ -112,7 +103,7 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		default:
 		}
 		return nil
-	}, handlerOpts)
+	}, WithHandlerJetStream(WithJSEnabled(true), WithJSAutoAck(true)))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startErr := make(chan error, 1)
@@ -127,13 +118,9 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		Name: "jetstream-event",
 	}
 
-	pubOpts := &EventPublishOptions{
-		JetStream: []nats.PubOpt{
-			nats.MsgId(fmt.Sprintf("msg-%d", time.Now().UnixNano())),
-		},
-	}
-
-	if err := evts.Emit(context.Background(), subject, want, pubOpts); err != nil {
+	if err := evts.Emit(context.Background(), subject, want, WithPublishJetStreamOptions(
+		nats.MsgId(fmt.Sprintf("msg-%d", time.Now().UnixNano())),
+	)); err != nil {
 		t.Fatalf("jetstream event publish failed: %v", err)
 	}
 
@@ -170,7 +157,7 @@ func waitForSubscriptions(t *testing.T, nc *nats.Conn) {
 func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewNatsEvents(nc, nil)
+	evts := NewNatsEvents(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.shutdown.%d", time.Now().UnixNano())
@@ -194,7 +181,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 		}
 		close(handlerFinished)
 		return nil
-	}, nil)
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startErr := make(chan error, 1)
@@ -210,7 +197,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	}
 
 	// Send event
-	if err := evts.Emit(context.Background(), subject, want, nil); err != nil {
+	if err := evts.Emit(context.Background(), subject, want); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 
@@ -263,7 +250,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewNatsEvents(nc, nil)
+	evts := NewNatsEvents(nc)
 
 	subject := fmt.Sprintf("integration.shutdown.timeout.%d", time.Now().UnixNano())
 
@@ -278,7 +265,7 @@ func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 			return err
 		}
 		return nil
-	}, nil)
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startErr := make(chan error, 1)
@@ -294,7 +281,7 @@ func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 	}
 
 	// Send event
-	if err := evts.Emit(context.Background(), subject, want, nil); err != nil {
+	if err := evts.Emit(context.Background(), subject, want); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 

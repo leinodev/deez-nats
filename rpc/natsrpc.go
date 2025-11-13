@@ -31,16 +31,13 @@ type natsRpcImpl struct {
 }
 
 // TODO: Add logger
-func NewNatsRPC(nc *nats.Conn, opts *RPCOptions) NatsRPC {
-	if opts == nil {
-		defaultOpts := NewRPCOptionsBuilder().Build()
-		opts = &defaultOpts
-	}
+func NewNatsRPC(nc *nats.Conn, opts ...RPCOption) NatsRPC {
+	options := NewRPCOptions(opts...)
 
 	return &natsRpcImpl{
 		nc:              nc,
-		options:         *opts,
-		rootRouter:      newRouter(opts.BaseRoute, opts.DefaultHandlerOptions),
+		options:         options,
+		rootRouter:      newRouter(options.BaseRoute, options.DefaultHandlerOptions),
 		lifecycleMgr:    lifecycle.NewManager(),
 		subscriptionMgr: subscriptions.NewManager(),
 		shutdownMgr:     graceful.NewShutdownManager(),
@@ -51,8 +48,12 @@ func NewNatsRPC(nc *nats.Conn, opts *RPCOptions) NatsRPC {
 func (r *natsRpcImpl) Use(middlewares ...RpcMiddlewareFunc) {
 	r.rootRouter.Use(middlewares...)
 }
-func (r *natsRpcImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts *HandlerOptions, middlewares ...RpcMiddlewareFunc) {
-	r.rootRouter.AddRPCHandler(method, handler, opts, middlewares...)
+func (r *natsRpcImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts ...HandlerOption) {
+	r.rootRouter.AddRPCHandler(method, handler, opts...)
+}
+
+func (r *natsRpcImpl) AddRPCHandlerWithMiddlewares(method string, handler RpcHandleFunc, middlewares []RpcMiddlewareFunc, opts ...HandlerOption) {
+	r.rootRouter.AddRPCHandlerWithMiddlewares(method, handler, middlewares, opts...)
 }
 func (r *natsRpcImpl) Group(group string) RPCRouter {
 	return r.rootRouter.Group(group)
@@ -122,16 +123,21 @@ func (r *natsRpcImpl) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, response any, opts CallOptions) error {
+func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, response any, opts ...CallOption) error {
 	if subj == "" {
 		return fmt.Errorf("%w: empty subject", ErrInvalidSubject)
 	}
 
-	if opts.Marshaller == nil {
-		opts.Marshaller = r.options.DefaultCallOptions.Marshaller
+	callOpts := r.options.DefaultCallOptions
+	for _, opt := range opts {
+		opt(&callOpts)
 	}
 
-	payload, err := opts.Marshaller.Marshall(&marshaller.MarshalObject{
+	if callOpts.Marshaller == nil {
+		callOpts.Marshaller = r.options.DefaultCallOptions.Marshaller
+	}
+
+	payload, err := callOpts.Marshaller.Marshall(&marshaller.MarshalObject{
 		Data: request,
 	})
 	if err != nil {
@@ -141,7 +147,7 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 	msg, err := r.nc.RequestMsgWithContext(ctx, &nats.Msg{
 		Subject: subj,
 		Data:    payload,
-		Header:  opts.Headers,
+		Header:  callOpts.Headers,
 	})
 	if err != nil {
 		return err
@@ -151,7 +157,7 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 		Data: response,
 	}
 
-	if err := opts.Marshaller.Unmarshall(msg.Data, respObj); err != nil {
+	if err := callOpts.Marshaller.Unmarshall(msg.Data, respObj); err != nil {
 		return fmt.Errorf("unmarshall response: %w", err)
 	}
 
