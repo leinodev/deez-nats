@@ -29,6 +29,10 @@ func (m *Manager) Track(sub *nats.Subscription) {
 }
 
 func (m *Manager) Cleanup() {
+	m.Drain()
+}
+
+func (m *Manager) Drain() {
 	m.mu.Lock()
 	subs := m.subs
 	m.subs = nil
@@ -36,6 +40,17 @@ func (m *Manager) Cleanup() {
 
 	for _, sub := range subs {
 		_ = sub.Drain()
+	}
+}
+
+func (m *Manager) Unsubscribe() {
+	m.mu.Lock()
+	subs := m.subs
+	m.subs = nil
+	m.mu.Unlock()
+
+	for _, sub := range subs {
+		_ = sub.Unsubscribe()
 	}
 }
 

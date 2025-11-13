@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/leinodev/deez-nats/internal/graceful"
 	"github.com/leinodev/deez-nats/internal/lifecycle"
 	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
@@ -26,6 +27,7 @@ type natsEventsImpl struct {
 
 	lifecycleMgr    *lifecycle.Manager
 	subscriptionMgr *subscriptions.Manager
+	shutdownMgr     *graceful.ShutdownManager
 
 	mu           sync.Mutex
 	pullWaits    []context.CancelFunc
@@ -44,6 +46,7 @@ func NewNatsEvents(nc *nats.Conn, opts *EventsOptions) NatsEvents {
 		options:         *opts,
 		lifecycleMgr:    lifecycle.NewManager(),
 		subscriptionMgr: subscriptions.NewManager(),
+		shutdownMgr:     graceful.NewShutdownManager(),
 	}
 
 	e.rootRouter = newEventRouter("", e.options.DefaultHandlerOptions)
@@ -73,28 +76,32 @@ func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 		return fmt.Errorf("events: %w", err)
 	}
 
+	// Set parent context for shutdown manager
+	e.shutdownMgr.SetParentContext(ctx)
+
 	startCtx, cancel := context.WithCancel(ctx)
 	e.shutdownFunc = cancel
 	defer cancel()
 
-	if err := e.bindAllEvents(startCtx); err != nil {
+	if err := e.bindAllEvents(); err != nil {
 		e.subscriptionMgr.Cleanup()
 		return err
 	}
 
 	<-startCtx.Done()
 	e.waitPullers()
+	_ = e.Shutdown(context.Background())
 	return startCtx.Err()
 }
 
-func (e *natsEventsImpl) bindAllEvents(ctx context.Context) error {
+func (e *natsEventsImpl) bindAllEvents() error {
 	routes := e.rootRouter.dfs()
 	if len(routes) == 0 {
 		return nil
 	}
 
 	for _, info := range routes {
-		if err := e.bindEvent(ctx, info); err != nil {
+		if err := e.bindEvent(info); err != nil {
 			return err
 		}
 	}
@@ -102,7 +109,7 @@ func (e *natsEventsImpl) bindAllEvents(ctx context.Context) error {
 	return nil
 }
 
-func (e *natsEventsImpl) bindEvent(ctx context.Context, info eventInfo) error {
+func (e *natsEventsImpl) bindEvent(info eventInfo) error {
 	handler := middleware.Apply(info.handler, info.middlewares, true)
 	subject := info.subject
 	if info.options.JetStream.SubjectTransform != nil {
@@ -110,23 +117,23 @@ func (e *natsEventsImpl) bindEvent(ctx context.Context, info eventInfo) error {
 	}
 
 	if info.options.JetStream.Enabled {
-		return e.bindJetStreamEvent(ctx, info, handler, subject)
+		return e.bindJetStreamEvent(info, handler, subject)
 	}
 
-	return e.bindStandardEvent(ctx, info, handler, subject)
+	return e.bindStandardEvent(info, handler, subject)
 }
 
-func (e *natsEventsImpl) bindJetStreamEvent(ctx context.Context, info eventInfo, handler EventHandleFunc, subject string) error {
+func (e *natsEventsImpl) bindJetStreamEvent(info eventInfo, handler EventHandleFunc, subject string) error {
 	js, err := e.ensureJetStream()
 	if err != nil {
 		return fmt.Errorf("jetstream context: %w", err)
 	}
 
 	jsOpts := e.buildJetStreamSubscribeOptions(info.options.JetStream)
-	msgHandler := e.wrapMsgHandler(ctx, info, handler)
+	msgHandler := e.wrapMsgHandler(info, handler)
 
 	if info.options.JetStream.Pull {
-		return e.bindPullConsumer(ctx, js, subject, info.options.JetStream, jsOpts, msgHandler)
+		return e.bindPullConsumer(js, subject, info.options.JetStream, jsOpts, msgHandler)
 	}
 
 	return e.bindPushConsumer(js, subject, info.options.JetStream, jsOpts, msgHandler)
@@ -140,7 +147,7 @@ func (e *natsEventsImpl) buildJetStreamSubscribeOptions(jsOpts JetStreamEventOpt
 	return opts
 }
 
-func (e *natsEventsImpl) bindPullConsumer(ctx context.Context, js nats.JetStreamContext, subject string, jsOpts JetStreamEventOptions, subscribeOpts []nats.SubOpt, msgHandler nats.MsgHandler) error {
+func (e *natsEventsImpl) bindPullConsumer(js nats.JetStreamContext, subject string, jsOpts JetStreamEventOptions, subscribeOpts []nats.SubOpt, msgHandler nats.MsgHandler) error {
 	if jsOpts.Durable == "" {
 		return ErrJetStreamPullRequiresDurable
 	}
@@ -151,11 +158,12 @@ func (e *natsEventsImpl) bindPullConsumer(ctx context.Context, js nats.JetStream
 	}
 
 	e.subscriptionMgr.Track(sub)
-	e.startPullConsumer(ctx, sub, jsOpts, msgHandler)
+	e.startPullConsumer(sub, jsOpts, msgHandler)
 	return nil
 }
 
-func (e *natsEventsImpl) startPullConsumer(ctx context.Context, sub *nats.Subscription, jsOpts JetStreamEventOptions, msgHandler nats.MsgHandler) {
+func (e *natsEventsImpl) startPullConsumer(sub *nats.Subscription, jsOpts JetStreamEventOptions, msgHandler nats.MsgHandler) {
+	ctx := e.shutdownMgr.ShutdownContext()
 	pullCtx, cancel := context.WithCancel(ctx)
 	e.trackPull(cancel)
 	e.stopWaiter.Add(1)
@@ -211,8 +219,8 @@ func (e *natsEventsImpl) bindPushConsumer(js nats.JetStreamContext, subject stri
 	return nil
 }
 
-func (e *natsEventsImpl) bindStandardEvent(ctx context.Context, info eventInfo, handler EventHandleFunc, subject string) error {
-	msgHandler := e.wrapMsgHandler(ctx, info, handler)
+func (e *natsEventsImpl) bindStandardEvent(info eventInfo, handler EventHandleFunc, subject string) error {
+	msgHandler := e.wrapMsgHandler(info, handler)
 
 	var sub *nats.Subscription
 	var err error
@@ -231,9 +239,15 @@ func (e *natsEventsImpl) bindStandardEvent(ctx context.Context, info eventInfo, 
 	return nil
 }
 
-func (e *natsEventsImpl) wrapMsgHandler(ctx context.Context, info eventInfo, handler EventHandleFunc) nats.MsgHandler {
+func (e *natsEventsImpl) wrapMsgHandler(info eventInfo, handler EventHandleFunc) nats.MsgHandler {
 	return func(msg *nats.Msg) {
-		eventCtx := newEventContext(ctx, msg, info.options.Marshaller)
+		if !e.shutdownMgr.StartHandler() {
+			return
+		}
+		defer e.shutdownMgr.FinishHandler()
+
+		handlerCtx := e.shutdownMgr.ShutdownContext()
+		eventCtx := newEventContext(handlerCtx, msg, info.options.Marshaller)
 
 		if err := handler(eventCtx); err != nil {
 			e.handleHandlerError(eventCtx, info.options.JetStream)
@@ -351,7 +365,23 @@ func (e *natsEventsImpl) waitPullers() {
 	}
 
 	e.stopWaiter.Wait()
-	e.subscriptionMgr.Cleanup()
+}
+
+func (e *natsEventsImpl) Shutdown(ctx context.Context) error {
+	// Stop pull consumers first
+	e.waitPullers()
+
+	// Drain subscriptions to stop accepting new messages
+	e.subscriptionMgr.Drain()
+
+	// Wait for all active handlers to finish
+	if err := e.shutdownMgr.Shutdown(ctx); err != nil {
+		return err
+	}
+
+	// Unsubscribe from all routes
+	e.subscriptionMgr.Unsubscribe()
+	return nil
 }
 
 func maxInt(a, b int) int {

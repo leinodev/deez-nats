@@ -16,6 +16,7 @@ type NatsEvents interface {
 
 	StartWithContext(ctx context.Context) error
 	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
+	Shutdown(ctx context.Context) error
 }
 
 type EventRouter interface {

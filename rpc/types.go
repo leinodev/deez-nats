@@ -15,6 +15,7 @@ type NatsRPC interface {
 
 	StartWithContext(ctx context.Context) error
 	CallRPC(ctx context.Context, subj string, request any, response any, opts CallOptions) error
+	Shutdown(ctx context.Context) error
 }
 
 type RPCRouter interface {
