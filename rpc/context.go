@@ -3,8 +3,8 @@ package rpc
 import (
 	"context"
 	"errors"
-	"time"
 
+	"github.com/leinodev/deez-nats/internal/ctx"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
@@ -16,8 +16,7 @@ var (
 
 func newRpcContext(parent context.Context, msg *nats.Msg, handlerOptions HandlerOptions) RPCContext {
 	return &rpcContextImpl{
-		ctx:             parent,
-		msg:             msg,
+		Base:            ctx.NewBase(parent, msg, handlerOptions.Marshaller),
 		handlerOptions:  handlerOptions,
 		responseHeaders: nats.Header{},
 		respWr:          false,
@@ -25,9 +24,8 @@ func newRpcContext(parent context.Context, msg *nats.Msg, handlerOptions Handler
 }
 
 type rpcContextImpl struct {
-	ctx context.Context
+	*ctx.Base
 
-	msg            *nats.Msg
 	handlerOptions HandlerOptions
 
 	responseHeaders nats.Header
@@ -35,30 +33,9 @@ type rpcContextImpl struct {
 	respWr bool
 }
 
-// Context inherited
-func (c *rpcContextImpl) Done() <-chan struct{} {
-	return c.ctx.Done()
-}
-func (c *rpcContextImpl) Deadline() (deadline time.Time, ok bool) {
-	return c.ctx.Deadline()
-}
-func (c *rpcContextImpl) Err() error {
-	return c.ctx.Err()
-}
-func (c *rpcContextImpl) Value(key any) any {
-	return c.ctx.Value(key)
-}
-
 // Rpc inherited methods
 func (c *rpcContextImpl) Request(data any) error {
-	err := c.handlerOptions.Marshaller.Unmarshall(c.msg.Data, &marshaller.MarshalObject{
-		Data: data,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.Unmarshal(data)
 }
 func (c *rpcContextImpl) Ok(data any) error {
 	if c.respWr {
@@ -77,7 +54,7 @@ func (c *rpcContextImpl) Ok(data any) error {
 	return nil
 }
 func (c *rpcContextImpl) RequestHeaders() nats.Header {
-	return c.msg.Header
+	return c.Headers()
 }
 func (c *rpcContextImpl) Headers() nats.Header {
 	return c.responseHeaders
@@ -102,14 +79,13 @@ func (c *rpcContextImpl) writeError(werr error) error {
 	c.respWr = true
 	return nil
 }
-
 func (c *rpcContextImpl) respond(obj *marshaller.MarshalObject) error {
-	data, err := c.handlerOptions.Marshaller.Marshall(obj)
+	data, err := c.Marshaller().Marshall(obj)
 	if err != nil {
 		return err
 	}
-	return c.msg.RespondMsg(&nats.Msg{
-		Subject: c.msg.Reply,
+	return c.Message().RespondMsg(&nats.Msg{
+		Subject: c.Message().Reply,
 		Data:    data,
 		Header:  c.responseHeaders,
 	})

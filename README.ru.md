@@ -25,8 +25,8 @@ go get github.com/leinodev/deez-nats
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewEvents(nc)
-rpcSvc := rpc.NewNatsRPC(nc)
+eventsSvc := events.NewNatsEvents(nc, nil)
+rpcSvc := rpc.NewNatsRPC(nc, nil)
 
 rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     var req PingRequest
@@ -67,9 +67,27 @@ _ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
 - `CallRPC` инкапсулирует запрос с таймаутом NATS и десериализацией респондов.
 - Для generics используйте `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler` или `AddTypedRPCHandler` с кастомным маршаллизатором.
 
+### Билдер опций RPC
+
+Используйте `rpc.NewRPCOptionsBuilder()` для настройки опций RPC-сервиса:
+
+```go
+opts := rpc.NewRPCOptionsBuilder().
+    WithBaseRoute("myservice").
+    WithDefaultHandlerOptions(func(b *rpc.HandlerOptionsBuilder) {
+        b.WithMarshaller(customMarshaller)
+    }).
+    WithDefaultCallOptions(func(b *rpc.CallOptionsBuilder) {
+        b.WithHeader("X-Service", "my-service")
+    }).
+    Build()
+
+rpcSvc := rpc.NewNatsRPC(nc, &opts)
+```
+
 ## События
 
-- `events.NewEvents` создаёт сервис, поддерживающий обычные подписки и JetStream.
+- `events.NewNatsEvents` создаёт сервис, поддерживающий обычные подписки и JetStream.
 - `AddEventHandler` позволяет указать очередь (`Queue`) и JetStream-настройки: durable, pull, deliver group, subject transform и т.д.
 - Для pull-консьюмеров задайте `JetStream.Pull = true`, `PullBatch`, `PullExpire` и `Durable`.
 - `EventContext` предоставляет:
@@ -78,6 +96,30 @@ _ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
   - доступ к `Headers()` и исходному `*nats.Msg`.
 - Эмиссия событий через `Emit(ctx, subject, payload, opts)`; можно передать заголовки и `nats.PubOpt`.
 - Типизированные обёртки: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
+
+### Билдер опций Events
+
+Используйте `events.NewEventsOptionsBuilder()` для настройки опций сервиса событий:
+
+```go
+opts := events.NewEventsOptionsBuilder().
+    WithJetStream(js).
+    WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
+        b.WithQueue("my-queue").
+          WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
+              jsb.Enabled().
+                  WithAutoAck(true).
+                  WithDurable("my-consumer")
+          })
+    }).
+    WithDefaultPublishOptions(func(b *events.EventPublishOptionsBuilder) {
+        b.WithMarshaller(customMarshaller).
+          WithHeader("X-Source", "my-service")
+    }).
+    Build()
+
+eventsSvc := events.NewNatsEvents(nc, &opts)
+```
 
 ## Маршаллизаторы
 

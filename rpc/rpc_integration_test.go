@@ -25,7 +25,8 @@ type addResponse struct {
 func TestRPCIntegrationCallSuccess(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	rpcServer := NewNatsRPC(nc, "myservice")
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
 	method := fmt.Sprintf("integration.add.%d", time.Now().UnixNano())
 
 	rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
@@ -64,7 +65,8 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 
 	rpcSubject := fmt.Sprintf("integration.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, "myservice")
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
 	rpcServer.AddRPCHandler(rpcSubject, func(ctx RPCContext) error {
 		var req addRequest
 		if err := ctx.Request(&req); err != nil {
@@ -99,7 +101,8 @@ func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
 
 	method := fmt.Sprintf("integration.typed.add.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, "myservice")
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	}, nil)
@@ -132,7 +135,8 @@ func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
 
 	method := fmt.Sprintf("integration.typed.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, "myservice")
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{}, errors.New("typed handler failure")
 	}, nil)
@@ -165,7 +169,8 @@ func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
 
 	recMarshaller := newRecordingMarshaller(nil)
 
-	rpcServer := NewNatsRPC(nc, "myservice")
+	opts := NewRPCOptionsBuilder().WithBaseRoute("myservice").Build()
+	rpcServer := NewNatsRPC(nc, &opts)
 	AddTypedRPCHandlerWithMarshaller(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	}, recMarshaller)

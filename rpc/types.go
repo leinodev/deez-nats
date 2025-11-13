@@ -45,5 +45,11 @@ type HandlerOptions struct {
 
 type CallOptions struct {
 	Marshaller marshaller.PayloadMarshaller
-	Headers    map[string][]string
+	Headers    nats.Header
+}
+
+type RPCOptions struct {
+	BaseRoute             string
+	DefaultHandlerOptions HandlerOptions
+	DefaultCallOptions    CallOptions
 }

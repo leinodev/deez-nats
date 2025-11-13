@@ -11,7 +11,7 @@ import (
 )
 
 func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
-	r := rpc.NewNatsRPC(nc)
+	r := rpc.NewNatsRPC(nc, nil)
 
 	r.AddRPCHandler("test", testHandler, nil)
 	r.AddRPCHandler("sraka", test1Handler, nil)

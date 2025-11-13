@@ -19,7 +19,7 @@ type sampleEvent struct {
 func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewEvents(nc)
+	evts := NewNatsEvents(nc, nil)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.basic.%d", time.Now().UnixNano())
@@ -88,7 +88,10 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		_ = js.DeleteStream(streamName)
 	})
 
-	evts := NewEvents(nc, WithEventJetStream(js))
+	opts := NewEventsOptionsBuilder().
+		WithJetStream(js).
+		Build()
+	evts := NewNatsEvents(nc, &opts)
 
 	received := make(chan sampleEvent, 1)
 	handlerOpts := &EventHandlerOptions{

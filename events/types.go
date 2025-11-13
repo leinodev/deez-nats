@@ -8,17 +8,15 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type Events interface {
+type EventHandleFunc func(EventContext) error
+type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
+
+type NatsEvents interface {
 	EventRouter
 
 	StartWithContext(ctx context.Context) error
 	Emit(ctx context.Context, subject string, payload any, opts *EventPublishOptions) error
 }
-
-type EventsOption func(*natsEventsImpl)
-
-type EventHandleFunc func(EventContext) error
-type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
 
 type EventRouter interface {
 	Use(middlewares ...EventMiddlewareFunc)
@@ -41,6 +39,13 @@ type EventContext interface {
 	InProgress(opts ...nats.AckOpt) error
 }
 
+type EventsOptions struct {
+	DefaultHandlerOptions EventHandlerOptions
+	DefaultPublishOptions EventPublishOptions
+	JetStream             nats.JetStreamContext
+	JetStreamOptions      []nats.JSOpt
+}
+
 type EventHandlerOptions struct {
 	Marshaller marshaller.PayloadMarshaller
 	Queue      string
@@ -53,6 +58,7 @@ type JetStreamEventOptions struct {
 	Pull             bool
 	PullBatch        int
 	PullExpire       time.Duration
+	PullRetryDelay   time.Duration
 	Durable          string
 	DeliverGroup     string
 	SubjectTransform func(subject string) string
@@ -61,6 +67,6 @@ type JetStreamEventOptions struct {
 
 type EventPublishOptions struct {
 	Marshaller marshaller.PayloadMarshaller
-	Headers    map[string]string
+	Headers    nats.Header
 	JetStream  []nats.PubOpt
 }

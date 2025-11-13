@@ -10,7 +10,7 @@ import (
 )
 
 func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
-	service := rpc.NewNatsRPC(nc)
+	service := rpc.NewNatsRPC(nc, nil)
 
 	rpc.AddTypedJsonRPCHandler(service, "user.get", func(ctx rpc.RPCContext, request GetUserRequest) (GetUserResponse, error) {
 		if request.ID == "" {

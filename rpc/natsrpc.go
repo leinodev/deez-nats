@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
+	"github.com/leinodev/deez-nats/internal/lifecycle"
+	"github.com/leinodev/deez-nats/internal/middleware"
+	"github.com/leinodev/deez-nats/internal/subscriptions"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
@@ -17,33 +19,28 @@ var (
 
 type natsRpcImpl struct {
 	NatsRPC
-	nc *nats.Conn
+	nc      *nats.Conn
+	options RPCOptions
 
 	rootRouter RPCRouter
 
-	defaultHandlerOpts HandlerOptions
-	defaultCallOpts    CallOptions
-
-	mu    sync.Mutex
-	subs  []*nats.Subscription
-	start bool
+	lifecycleMgr    *lifecycle.Manager
+	subscriptionMgr *subscriptions.Manager
 }
 
-// TODO: Add options builder
 // TODO: Add logger
-func NewNatsRPC(nc *nats.Conn, baseRoute string) NatsRPC {
-	defaultHandler := HandlerOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
-	}
-	defaultCall := CallOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
+func NewNatsRPC(nc *nats.Conn, opts *RPCOptions) NatsRPC {
+	if opts == nil {
+		defaultOpts := NewRPCOptionsBuilder().Build()
+		opts = &defaultOpts
 	}
 
 	return &natsRpcImpl{
-		nc:                 nc,
-		defaultHandlerOpts: defaultHandler,
-		defaultCallOpts:    defaultCall,
-		rootRouter:         newRouter(baseRoute, defaultHandler),
+		nc:              nc,
+		options:         *opts,
+		rootRouter:      newRouter(opts.BaseRoute, opts.DefaultHandlerOptions),
+		lifecycleMgr:    lifecycle.NewManager(),
+		subscriptionMgr: subscriptions.NewManager(),
 	}
 }
 
@@ -57,48 +54,51 @@ func (r *natsRpcImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts *
 func (r *natsRpcImpl) Group(group string) RPCRouter {
 	return r.rootRouter.Group(group)
 }
-func (r *natsRpcImpl) dfs() []rpcInfo {
-	return r.rootRouter.dfs()
-}
 
 // Rpc methods
 func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
-	r.mu.Lock()
-	if r.start {
-		r.mu.Unlock()
-		return errors.New("rpc already started")
+	if err := r.lifecycleMgr.MarkAsStarted(); err != nil {
+		return fmt.Errorf("rpc: %w", err)
 	}
-	r.start = true
-	r.mu.Unlock()
 
+	if err := r.bindAllRoutes(ctx); err != nil {
+		r.subscriptionMgr.Cleanup()
+		return err
+	}
+
+	go func() {
+		<-ctx.Done()
+		r.subscriptionMgr.Cleanup()
+	}()
+
+	return nil
+}
+
+func (r *natsRpcImpl) bindAllRoutes(ctx context.Context) error {
 	routes := r.rootRouter.dfs()
 	if len(routes) == 0 {
 		return nil
 	}
 
 	for _, route := range routes {
-		handler := route.handler
-
-		for _, mv := range route.middlewares {
-			handler = mv(handler)
+		if err := r.bindRoute(ctx, route); err != nil {
+			return err
 		}
-
-		sub, err := r.nc.Subscribe(route.method, r.wrapRPCHandler(ctx, route, handler))
-		if err != nil {
-			r.cleanupSubscriptions()
-			return fmt.Errorf("subscribe %s: %w", route.method, err)
-		}
-
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.subs = append(r.subs, sub)
 	}
 
-	go func() {
-		<-ctx.Done()
-		r.cleanupSubscriptions()
-	}()
+	return nil
+}
 
+func (r *natsRpcImpl) bindRoute(ctx context.Context, route rpcInfo) error {
+	handler := middleware.Apply(route.handler, route.middlewares, true)
+	msgHandler := r.wrapRPCHandler(ctx, route, handler)
+
+	sub, err := r.nc.Subscribe(route.method, msgHandler)
+	if err != nil {
+		return fmt.Errorf("subscribe %s: %w", route.method, err)
+	}
+
+	r.subscriptionMgr.Track(sub)
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 	}
 
 	if opts.Marshaller == nil {
-		opts.Marshaller = r.defaultCallOpts.Marshaller
+		opts.Marshaller = r.options.DefaultCallOptions.Marshaller
 	}
 
 	payload, err := opts.Marshaller.Marshall(&marshaller.MarshalObject{
@@ -162,16 +162,5 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler 
 			// Got an error, respond with error
 			_ = rpcCtx.writeError(err)
 		}
-	}
-}
-
-func (r *natsRpcImpl) cleanupSubscriptions() {
-	r.mu.Lock()
-	subs := r.subs
-	r.subs = nil
-	r.mu.Unlock()
-
-	for _, sub := range subs {
-		_ = sub.Drain()
 	}
 }

@@ -27,8 +27,8 @@ Requires Go 1.21+ (the module is built with `go 1.25`).
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewEvents(nc)
-rpcSvc := rpc.NewNatsRPC(nc)
+eventsSvc := events.NewNatsEvents(nc, nil)
+rpcSvc := rpc.NewNatsRPC(nc, nil)
 
 rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     var req PingRequest
@@ -69,9 +69,27 @@ _ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
 - `CallRPC` wraps a request with NATS timeout handling and response deserialization.
 - For generics, use `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler`, or `AddTypedRPCHandler` with your custom marshaller.
 
+### RPC Options Builder
+
+Use `rpc.NewRPCOptionsBuilder()` to configure RPC service options:
+
+```go
+opts := rpc.NewRPCOptionsBuilder().
+    WithBaseRoute("myservice").
+    WithDefaultHandlerOptions(func(b *rpc.HandlerOptionsBuilder) {
+        b.WithMarshaller(customMarshaller)
+    }).
+    WithDefaultCallOptions(func(b *rpc.CallOptionsBuilder) {
+        b.WithHeader("X-Service", "my-service")
+    }).
+    Build()
+
+rpcSvc := rpc.NewNatsRPC(nc, &opts)
+```
+
 ## Events
 
-- `events.NewEvents` creates a service that supports standard subscriptions and JetStream.
+- `events.NewNatsEvents` creates a service that supports standard subscriptions and JetStream.
 - `AddEventHandler` lets you specify a queue (`Queue`) and JetStream options: durable, pull, deliver group, subject transform, etc.
 - For pull consumers, set `JetStream.Pull = true`, `PullBatch`, `PullExpire`, and `Durable`.
 - `EventContext` provides:
@@ -80,6 +98,30 @@ _ = rpcSvc.CallRPC("user.ping", PingRequest{ID: "42"}, &resp, rpc.CallOptions{})
   - access to `Headers()` and the original `*nats.Msg`.
 - Emit events with `Emit(ctx, subject, payload, opts)`; you can include headers and `nats.PubOpt`.
 - Typed helpers: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
+
+### Events Options Builder
+
+Use `events.NewEventsOptionsBuilder()` to configure event service options:
+
+```go
+opts := events.NewEventsOptionsBuilder().
+    WithJetStream(js).
+    WithDefaultHandlerOptions(func(b *events.EventHandlerOptionsBuilder) {
+        b.WithQueue("my-queue").
+          WithJetStream(func(jsb *events.JetStreamEventOptionsBuilder) {
+              jsb.Enabled().
+                  WithAutoAck(true).
+                  WithDurable("my-consumer")
+          })
+    }).
+    WithDefaultPublishOptions(func(b *events.EventPublishOptionsBuilder) {
+        b.WithMarshaller(customMarshaller).
+          WithHeader("X-Source", "my-service")
+    }).
+    Build()
+
+eventsSvc := events.NewNatsEvents(nc, &opts)
+```
 
 ## Marshallers
 
