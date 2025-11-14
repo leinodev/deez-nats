@@ -84,14 +84,14 @@ func emitExamples(ctx context.Context, service events.NatsEvents) {
 
 func callExamples(ctx context.Context, service rpc.NatsRPC) {
 	var getResp GetUserResponse
-	if err := service.CallRPC(ctx, "user.get", GetUserRequest{ID: "42"}, &getResp, rpc.CallOptions{}); err != nil {
+	if err := service.CallRPC(ctx, "user.get", GetUserRequest{ID: "42"}, &getResp); err != nil {
 		log.Printf("rpc call user.get: %v", err)
 	} else {
 		log.Printf("user.get response: %#v", getResp)
 	}
 
 	var updateResp UpdateUserResponse
-	if err := service.CallRPC(ctx, "user.update", UpdateUserRequest{ID: "42", Name: "Typed Example v2"}, &updateResp, rpc.CallOptions{}); err != nil {
+	if err := service.CallRPC(ctx, "user.update", UpdateUserRequest{ID: "42", Name: "Typed Example v2"}, &updateResp); err != nil {
 		log.Printf("rpc call user.update: %v", err)
 	} else {
 		log.Printf("user.update response: %#v", updateResp)

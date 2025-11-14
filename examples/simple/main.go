@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-
-	"github.com/leinodev/deez-nats/rpc"
 )
 
 func main() {
@@ -53,7 +51,7 @@ func main() {
 	}
 
 	var response protocoljson.MyResponse
-	if err := rpcService.CallRPC(ctx, "test", protocoljson.MyRequst{UserID: "42"}, &response, rpc.CallOptions{}); err != nil {
+	if err := rpcService.CallRPC(ctx, "test", protocoljson.MyRequst{UserID: "42"}, &response); err != nil {
 		log.Printf("rpc call test: %v", err)
 	}
 
