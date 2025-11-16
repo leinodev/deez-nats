@@ -13,8 +13,9 @@ type RpcMiddlewareFunc func(next RpcHandleFunc) RpcHandleFunc
 type NatsRPC interface {
 	RPCRouter
 
-	StartWithContext(ctx context.Context) error
 	CallRPC(ctx context.Context, subj string, request any, response any, opts ...CallOption) error
+
+	StartWithContext(ctx context.Context) error
 	Shutdown(ctx context.Context) error
 }
 

@@ -6,57 +6,54 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type Manager struct {
+type sub struct {
+	Sub   *nats.Subscription
+	Dirty bool
+}
+
+type Tracker struct {
 	mu   sync.Mutex
-	subs []*nats.Subscription
+	subs []sub
 }
 
-func NewManager() *Manager {
-	return &Manager{
-		subs: make([]*nats.Subscription, 0),
+func NewTracker() *Tracker {
+	return &Tracker{
+		subs: make([]sub, 0),
 	}
 }
 
-func (m *Manager) Track(sub *nats.Subscription) {
-	if sub == nil {
-		return
-	}
-
+func (m *Tracker) Track(s *nats.Subscription) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.subs = append(m.subs, sub)
+	m.subs = append(m.subs, sub{
+		Sub:   s,
+		Dirty: false,
+	})
 }
 
-func (m *Manager) Cleanup() {
-	m.Drain()
+func (m *Tracker) Drain() {
+	m.mu.Lock()
+	subs := m.subs
+	m.subs = nil
+	m.mu.Unlock()
+
+	for i, sub := range subs {
+		subs[i].Dirty = true
+		_ = sub.Sub.Drain()
+	}
 }
 
-func (m *Manager) Drain() {
+func (m *Tracker) Unsubscribe() {
 	m.mu.Lock()
 	subs := m.subs
 	m.subs = nil
 	m.mu.Unlock()
 
 	for _, sub := range subs {
-		_ = sub.Drain()
+		if !sub.Dirty {
+			continue
+		}
+		_ = sub.Sub.Unsubscribe()
 	}
-}
-
-func (m *Manager) Unsubscribe() {
-	m.mu.Lock()
-	subs := m.subs
-	m.subs = nil
-	m.mu.Unlock()
-
-	for _, sub := range subs {
-		_ = sub.Unsubscribe()
-	}
-}
-
-func (m *Manager) Count() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.subs)
 }

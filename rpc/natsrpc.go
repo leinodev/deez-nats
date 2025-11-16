@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
-	"github.com/leinodev/deez-nats/internal/graceful"
-	"github.com/leinodev/deez-nats/internal/lifecycle"
 	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
 	"github.com/leinodev/deez-nats/marshaller"
@@ -25,9 +25,9 @@ type natsRpcImpl struct {
 
 	rootRouter RPCRouter
 
-	lifecycleMgr    *lifecycle.Manager
-	subscriptionMgr *subscriptions.Manager
-	shutdownMgr     *graceful.ShutdownManager
+	subsTracker *subscriptions.Tracker
+
+	handlersWatch sync.WaitGroup
 }
 
 // TODO: Add logger
@@ -35,12 +35,10 @@ func NewNatsRPC(nc *nats.Conn, opts ...RPCOption) NatsRPC {
 	options := NewRPCOptions(opts...)
 
 	return &natsRpcImpl{
-		nc:              nc,
-		options:         options,
-		rootRouter:      newRouter(options.BaseRoute, options.DefaultHandlerOptions),
-		lifecycleMgr:    lifecycle.NewManager(),
-		subscriptionMgr: subscriptions.NewManager(),
-		shutdownMgr:     graceful.NewShutdownManager(),
+		nc:          nc,
+		options:     options,
+		rootRouter:  newRouter(options.BaseRoute, options.DefaultHandlerOptions),
+		subsTracker: subscriptions.NewTracker(),
 	}
 }
 
@@ -51,7 +49,6 @@ func (r *natsRpcImpl) Use(middlewares ...RpcMiddlewareFunc) {
 func (r *natsRpcImpl) AddRPCHandler(method string, handler RpcHandleFunc, opts ...HandlerOption) {
 	r.rootRouter.AddRPCHandler(method, handler, opts...)
 }
-
 func (r *natsRpcImpl) AddRPCHandlerWithMiddlewares(method string, handler RpcHandleFunc, middlewares []RpcMiddlewareFunc, opts ...HandlerOption) {
 	r.rootRouter.AddRPCHandlerWithMiddlewares(method, handler, middlewares, opts...)
 }
@@ -61,65 +58,49 @@ func (r *natsRpcImpl) Group(group string) RPCRouter {
 
 // Rpc methods
 func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
-	if err := r.lifecycleMgr.MarkAsStarted(); err != nil {
-		return fmt.Errorf("rpc: %w", err)
-	}
-
-	// Set parent context for shutdown manager
-	r.shutdownMgr.SetParentContext(ctx)
-
-	if err := r.bindAllRoutes(ctx); err != nil {
-		r.subscriptionMgr.Cleanup()
-		return err
+	for _, route := range r.rootRouter.dfs() {
+		if sub, err := r.nc.Subscribe(
+			route.method,
+			r.wrapRPCHandler(
+				ctx,
+				route,
+				middleware.Apply(route.handler, route.middlewares, true),
+			)); err != nil {
+			r.Shutdown(ctx)
+			return fmt.Errorf("failed to subscribe %s: %w", route.method, err)
+		} else {
+			r.subsTracker.Track(sub)
+		}
 	}
 
 	go func() {
 		<-ctx.Done()
-		_ = r.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		_ = r.Shutdown(shutdownCtx)
 	}()
 
 	return nil
 }
 
-func (r *natsRpcImpl) bindAllRoutes(ctx context.Context) error {
-	routes := r.rootRouter.dfs()
-	if len(routes) == 0 {
-		return nil
-	}
-
-	for _, route := range routes {
-		if err := r.bindRoute(ctx, route); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *natsRpcImpl) bindRoute(ctx context.Context, route rpcInfo) error {
-	handler := middleware.Apply(route.handler, route.middlewares, true)
-	msgHandler := r.wrapRPCHandler(route, handler)
-
-	sub, err := r.nc.Subscribe(route.method, msgHandler)
-	if err != nil {
-		return fmt.Errorf("subscribe %s: %w", route.method, err)
-	}
-
-	r.subscriptionMgr.Track(sub)
-	return nil
-}
-
 func (r *natsRpcImpl) Shutdown(ctx context.Context) error {
-	// Drain subscriptions to stop accepting new messages
-	r.subscriptionMgr.Drain()
+	r.subsTracker.Drain() // Drain subscriptions to stop accepting new messages
 
-	// Wait for all active handlers to finish
-	if err := r.shutdownMgr.Shutdown(ctx); err != nil {
-		return err
+	rpcsFinished := make(chan struct{})
+	go func() {
+		r.handlersWatch.Wait() // Wait for all active handlers to finish.
+		<-rpcsFinished
+		close(rpcsFinished)
+	}()
+
+	select {
+	case <-rpcsFinished:
+		break
+	case <-ctx.Done():
+		return fmt.Errorf("failed to wait for handlers finish: %w", context.DeadlineExceeded)
 	}
 
-	// Unsubscribe from all routes
-	r.subscriptionMgr.Unsubscribe()
+	r.subsTracker.Unsubscribe() // Unsubscribe from all routes
 	return nil
 }
 
@@ -167,20 +148,15 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 	return nil
 }
 
-func (r *natsRpcImpl) wrapRPCHandler(info rpcInfo, handler RpcHandleFunc) nats.MsgHandler {
+func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler RpcHandleFunc) nats.MsgHandler {
 	return func(msg *nats.Msg) {
 		if msg == nil {
 			return
 		}
+		r.handlersWatch.Add(1)
+		defer r.handlersWatch.Done()
 
-		if !r.shutdownMgr.StartHandler() {
-			return
-		}
-		defer r.shutdownMgr.FinishHandler()
-
-		handlerCtx := r.shutdownMgr.ShutdownContext()
-		rpcCtx := newRpcContext(handlerCtx, msg, info.options)
-
+		rpcCtx := newRpcContext(ctx, msg, info.options)
 		err := handler(rpcCtx)
 		if rpcCtx.responseWritten() {
 			_ = msg.Ack()
