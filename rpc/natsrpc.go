@@ -58,34 +58,30 @@ func (r *natsRpcImpl) Group(group string) RPCRouter {
 
 // Rpc methods
 func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
-	handler := func(route rpcInfo) nats.MsgHandler {
-		return r.wrapRPCHandler(
+	var sub *nats.Subscription
+	var err error
+	for _, route := range r.rootRouter.dfs() {
+		handler := r.wrapRPCHandler(
 			ctx,
 			route,
 			middleware.Apply(route.handler, route.middlewares, true),
 		)
-	}
-
-	for _, route := range r.rootRouter.dfs() {
-		var sub *nats.Subscription
-		var err error
 
 		if r.options.QueueGroup != "" {
 			sub, err = r.nc.QueueSubscribe(
 				route.method,
 				r.options.QueueGroup,
-				handler(route),
+				handler,
 			)
 		} else {
 			sub, err = r.nc.Subscribe(
 				route.method,
-				handler(route),
+				handler,
 			)
 		}
 
 		if err != nil {
 			r.Shutdown(ctx)
-
 			return fmt.Errorf("failed to subscribe %s: %w", route.method, err)
 		}
 
