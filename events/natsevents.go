@@ -102,30 +102,27 @@ func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, 
 	return e.provider.Publish(ctx, msg, publishOpts)
 }
 func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
-	handler := func(route eventInfo) nats.MsgHandler {
-		return e.wrapMsgHandler(
+	var sub provider.TransportSubscription
+	var err error
+	for _, route := range e.rootRouter.dfs() {
+		handler := e.wrapMsgHandler(
 			ctx,
 			route,
 			middleware.Apply(route.handler, route.middlewares, true),
 		)
-	}
-
-	for _, route := range e.rootRouter.dfs() {
-		var sub provider.TransportSubscription
-		var err error
 
 		if e.options.QueueGroup != "" {
 			sub, err = e.provider.QueueSubscribe(
 				ctx,
 				route.subject,
 				e.options.QueueGroup,
-				handler(route),
+				handler,
 			)
 		} else {
 			sub, err = e.provider.Subscribe(
 				ctx,
 				route.subject,
-				handler(route),
+				handler,
 			)
 		}
 
