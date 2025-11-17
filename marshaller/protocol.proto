@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package marshaller;
+option go_package = "./;marshaller";
+import "google/protobuf/any.proto";
+
+message ProtobufWrap {
+  google.protobuf.Any data = 1;
+  string error = 2;
+}
+
+message ProtobufTestMessage {
+  string name = 1;
+  map<string,string> data = 2;
+}
