@@ -104,7 +104,7 @@ func (r *natsRpcImpl) Shutdown(ctx context.Context) error {
 	finished := make(chan struct{})
 	go func() {
 		r.handlersWatch.Wait() // Wait for all active handlers to finish.
-		<-finished
+		finished <- struct{}{}
 		close(finished)
 	}()
 

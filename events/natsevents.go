@@ -150,7 +150,7 @@ func (e *natsEventsImpl) Shutdown(ctx context.Context) error {
 	finished := make(chan struct{})
 	go func() {
 		e.handlersWatch.Wait() // Wait for all active handlers to finish.
-		<-finished
+		finished <- struct{}{}
 		close(finished)
 	}()
 

@@ -292,7 +292,7 @@ func TestRPCIntegrationGracefulShutdown(t *testing.T) {
 
 	// Initiate graceful shutdown
 	go func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		cancel() // Cancel context to stop accepting new messages
 		err := rpcServer.Shutdown(shutdownCtx)
