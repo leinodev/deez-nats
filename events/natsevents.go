@@ -35,24 +35,7 @@ type natsEventsImpl struct {
 }
 
 func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
-	// Create default options
-	options := EventsOptions{
-		DefaultHandlerOptions: EventHandlerOptions{
-			Marshaller: marshaller.DefaultJsonMarshaller,
-			JetStream: JetStreamEventOptions{
-				AutoAck: true,
-			},
-		},
-		DefaultPublishOptions: EventPublishOptions{
-			Marshaller: marshaller.DefaultJsonMarshaller,
-		},
-		JetStreamOptions: make([]nats.JSOpt, 0),
-	}
-
-	// Apply functional options
-	for _, opt := range opts {
-		opt(&options)
-	}
+	options := NewEventsOptions(opts...)
 
 	e := &natsEventsImpl{
 		nc:           nc,
