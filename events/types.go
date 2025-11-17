@@ -46,7 +46,6 @@ type EventsOptions struct {
 	QueueGroup            string
 	DefaultHandlerOptions EventHandlerOptions
 	DefaultPublishOptions EventPublishOptions
-	JetStream             nats.JetStreamContext
 	JetStreamOptions      []nats.JSOpt
 }
 

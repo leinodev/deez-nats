@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/leinodev/deez-nats/internal/lifecycle"
-	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/provider"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
 	"github.com/leinodev/deez-nats/marshaller"
@@ -28,13 +27,14 @@ type natsEventsImpl struct {
 	lifecycleMgr *lifecycle.Manager
 	subsTracker  *subscriptions.Tracker
 
-	provider provider.TransportProvider
+	provider  provider.TransportProvider
+	jsEnabled bool
 
 	mu            sync.Mutex
 	handlersWatch sync.WaitGroup
 }
 
-func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
+func NewCoreNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
 	options := NewEventsOptions(opts...)
 
 	e := &natsEventsImpl{
@@ -42,6 +42,30 @@ func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
 		options:      options,
 		lifecycleMgr: lifecycle.NewManager(),
 		subsTracker:  subscriptions.NewTracker(),
+		provider:     provider.NewCoreProvider(nc),
+		jsEnabled:    false,
+	}
+
+	e.rootRouter = newEventRouter("", e.options.DefaultHandlerOptions)
+
+	return e
+}
+
+func NewJsNatsEvents(nc *nats.Conn, stream string, opts ...EventsOption) NatsEvents {
+	options := NewEventsOptions(opts...)
+
+	provider, err := provider.NewJetstreamProvider(nc, stream)
+	if err != nil {
+		panic(err)
+	}
+
+	e := &natsEventsImpl{
+		nc:           nc,
+		options:      options,
+		lifecycleMgr: lifecycle.NewManager(),
+		subsTracker:  subscriptions.NewTracker(),
+		provider:     provider,
+		jsEnabled:    true,
 	}
 
 	e.rootRouter = newEventRouter("", e.options.DefaultHandlerOptions)
@@ -88,11 +112,15 @@ func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 	var sub provider.TransportSubscription
 	var err error
 	for _, route := range e.rootRouter.dfs() {
-		handler := e.wrapMsgHandler(
-			ctx,
-			route,
-			middleware.Apply(route.handler, route.middlewares, true),
-		)
+		handler := func(msg provider.TransportMessage) error {
+			var eventCtx EventContext
+			if e.jsEnabled {
+				eventCtx = newJsEventContext(ctx, msg.JsMsg(), route.options.Marshaller)
+			} else {
+				eventCtx = newCoreEventContext(ctx, msg.CoreMsg(), route.options.Marshaller)
+			}
+			return route.handler(eventCtx)
+		}
 
 		if e.options.QueueGroup != "" {
 			sub, err = e.provider.QueueSubscribe(
@@ -153,7 +181,7 @@ func (e *natsEventsImpl) dfs() []eventInfo {
 }
 func (e *natsEventsImpl) wrapMsgHandler(ctx context.Context, info eventInfo, handler EventHandleFunc) nats.MsgHandler {
 	return func(msg *nats.Msg) {
-		eventCtx := newEventContext(ctx, msg, info.options.Marshaller)
+		eventCtx := newCoreEventContext(ctx, msg, info.options.Marshaller)
 
 		if err := handler(eventCtx); err != nil {
 			eventCtx.Nak()

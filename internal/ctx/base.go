@@ -30,15 +30,12 @@ func NewBase(parent context.Context, msg *nats.Msg, m marshaller.PayloadMarshall
 func (c *Base) Done() <-chan struct{} {
 	return c.ctx.Done()
 }
-
 func (c *Base) Deadline() (deadline time.Time, ok bool) {
 	return c.ctx.Deadline()
 }
-
 func (c *Base) Err() error {
 	return c.ctx.Err()
 }
-
 func (c *Base) Value(key any) any {
 	return c.ctx.Value(key)
 }
@@ -50,11 +47,9 @@ func (c *Base) Headers() nats.Header {
 	}
 	return c.msg.Header
 }
-
 func (c *Base) Message() *nats.Msg {
 	return c.msg
 }
-
 func (c *Base) Unmarshal(data any) error {
 	if c.msg == nil || c.marshaller == nil {
 		return nil
@@ -64,11 +59,9 @@ func (c *Base) Unmarshal(data any) error {
 		Data: data,
 	})
 }
-
 func (c *Base) Context() context.Context {
 	return c.ctx
 }
-
 func (c *Base) Marshaller() marshaller.PayloadMarshaller {
 	return c.marshaller
 }

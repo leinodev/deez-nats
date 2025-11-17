@@ -30,11 +30,6 @@ func WithAutoAck(autoAck bool) EventsOption {
 		opts.DefaultHandlerOptions.JetStream.AutoAck = autoAck
 	}
 }
-func WithJetStreamContext(js nats.JetStreamContext) EventsOption {
-	return func(opts *EventsOptions) {
-		opts.JetStream = js
-	}
-}
 func WithJetStreamOptions(jsOpts ...nats.JSOpt) EventsOption {
 	return func(opts *EventsOptions) {
 		opts.JetStreamOptions = append(opts.JetStreamOptions, jsOpts...)
