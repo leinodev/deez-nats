@@ -54,6 +54,7 @@ type CallOptions struct {
 
 type RPCOptions struct {
 	BaseRoute             string
+	QueueGroup            string
 	DefaultHandlerOptions HandlerOptions
 	DefaultCallOptions    CallOptions
 }

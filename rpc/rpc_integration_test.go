@@ -389,3 +389,109 @@ func TestRPCIntegrationGracefulShutdownTimeout(t *testing.T) {
 		t.Fatalf("expected completion without error, got: %v", err)
 	}
 }
+
+func TestRPCIntegrationQueueGroupLoadBalancing(t *testing.T) {
+	nc := testutil.ConnectToNATS(t)
+
+	method := fmt.Sprintf("integration.queuegroup.%d", time.Now().UnixNano())
+	queueGroup := "test-queue-group"
+
+	// Create multiple RPC server instances with the same queue group
+	const numServers = 3
+	const numRequests = 10
+
+	// Request handling counters for each server
+	handledCounts := make([]int, numServers)
+	var mu sync.Mutex
+
+	// Channels for server startup synchronization
+	serverCancels := make([]context.CancelFunc, numServers)
+	startErrs := make([]chan error, numServers)
+
+	for i := range numServers {
+		serverIdx := i
+		serverCtx, serverCancel := context.WithCancel(context.Background())
+		serverCancels[i] = serverCancel
+		startErrs[i] = make(chan error, 1)
+
+		rpcServer := NewNatsRPC(nc,
+			WithBaseRoute("myservice"),
+			WithQueueGroup(queueGroup),
+		)
+
+		rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
+			var req addRequest
+			if err := ctx.Request(&req); err != nil {
+				return err
+			}
+
+			mu.Lock()
+			handledCounts[serverIdx]++
+			mu.Unlock()
+
+			return ctx.Ok(&addResponse{Sum: req.A + req.B})
+		})
+
+		go func(idx int) {
+			startErrs[idx] <- rpcServer.StartWithContext(serverCtx)
+		}(i)
+	}
+
+	waitForRPCSubscriptions(t, nc)
+	time.Sleep(100 * time.Millisecond)
+
+	clientNC := testutil.ConnectToNATS(t)
+	clientRPC := NewNatsRPC(clientNC)
+
+	var wg sync.WaitGroup
+	for i := range numRequests {
+		wg.Add(1)
+		go func(reqNum int) {
+			defer wg.Done()
+			var resp addResponse
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := clientRPC.CallRPC(ctx, "myservice."+method, addRequest{A: reqNum, B: reqNum * 2}, &resp); err != nil {
+				t.Errorf("rpc call %d failed: %v", reqNum, err)
+				return
+			}
+
+			expectedSum := reqNum + reqNum*2
+			if resp.Sum != expectedSum {
+				t.Errorf("rpc call %d: expected sum %d, got %d", reqNum, expectedSum, resp.Sum)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i := range numServers {
+		serverCancels[i]()
+		if err := <-startErrs[i]; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("server %d: expected completion without error, got: %v", i, err)
+		}
+	}
+
+	mu.Lock()
+	totalHandled := 0
+	serversWithRequests := 0
+	for i, count := range handledCounts {
+		totalHandled += count
+		if count > 0 {
+			serversWithRequests++
+			t.Logf("Server %d handled %d requests", i, count)
+		}
+	}
+	mu.Unlock()
+
+	if totalHandled != numRequests {
+		t.Fatalf("expected %d total requests handled, got %d", numRequests, totalHandled)
+	}
+
+	if serversWithRequests < 2 {
+		t.Fatalf("expected requests to be distributed among at least 2 servers, but only %d server(s) handled requests", serversWithRequests)
+	}
+
+	clientNC.Close()
+}

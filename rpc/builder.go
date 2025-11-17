@@ -13,6 +13,11 @@ func WithBaseRoute(route string) RPCOption {
 		opts.BaseRoute = route
 	}
 }
+func WithQueueGroup(queueGroup string) RPCOption {
+	return func(opts *RPCOptions) {
+		opts.QueueGroup = queueGroup
+	}
+}
 func WithDefaultHandlerMarshaller(m marshaller.PayloadMarshaller) RPCOption {
 	return func(opts *RPCOptions) {
 		opts.DefaultHandlerOptions.Marshaller = m
@@ -115,7 +120,8 @@ func NewCallOptions(opts ...CallOption) CallOptions {
 // NewRPCOptions creates RPCOptions from functional options
 func NewRPCOptions(opts ...RPCOption) RPCOptions {
 	rpcOpts := RPCOptions{
-		BaseRoute: "",
+		BaseRoute:  "",
+		QueueGroup: "",
 		DefaultHandlerOptions: HandlerOptions{
 			Marshaller: marshaller.DefaultJsonMarshaller,
 		},

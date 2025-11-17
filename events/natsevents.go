@@ -26,7 +26,7 @@ type natsEventsImpl struct {
 	rootRouter EventRouter
 
 	lifecycleMgr    *lifecycle.Manager
-	subscriptionMgr *subscriptions.Manager
+	subscriptionMgr *subscriptions.Tracker
 	shutdownMgr     *graceful.ShutdownManager
 
 	mu           sync.Mutex
@@ -59,7 +59,7 @@ func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
 		nc:              nc,
 		options:         options,
 		lifecycleMgr:    lifecycle.NewManager(),
-		subscriptionMgr: subscriptions.NewManager(),
+		subscriptionMgr: subscriptions.NewTracker(),
 		shutdownMgr:     graceful.NewShutdownManager(),
 	}
 
@@ -102,7 +102,7 @@ func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 	defer cancel()
 
 	if err := e.bindAllEvents(); err != nil {
-		e.subscriptionMgr.Cleanup()
+		e.subscriptionMgr.Drain()
 		return err
 	}
 
