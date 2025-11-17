@@ -10,7 +10,7 @@ import (
 
 const (
 	NatsTestURLEnv     = "INTEGRATION_NATS_URL"
-	defaultNatsTestURL = "nats://127.0.0.1:4222"
+	defaultNatsTestURL = "nats://localhost:4222"
 )
 
 func ConnectToNATS(t *testing.T) *nats.Conn {

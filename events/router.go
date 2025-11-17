@@ -2,7 +2,6 @@ package events
 
 import (
 	"github.com/leinodev/deez-nats/internal/router"
-	"github.com/leinodev/deez-nats/marshaller"
 )
 
 type eventInfo struct {
@@ -17,10 +16,6 @@ type eventRouterImpl struct {
 }
 
 func newEventRouter(groupName string, defaultOpts EventHandlerOptions) EventRouter {
-	if defaultOpts.Marshaller == nil {
-		defaultOpts.Marshaller = marshaller.DefaultJsonMarshaller
-	}
-
 	return &eventRouterImpl{
 		base: router.NewBase[EventHandleFunc, EventMiddlewareFunc](groupName, defaultOpts),
 	}
@@ -38,32 +33,7 @@ func (r *eventRouterImpl) AddEventHandlerWithMiddlewares(subject string, handler
 	if subject == "" {
 		panic("empty event subject name")
 	}
-
-	defaultOpts := r.base.DefaultOptions()
-	if defaultOpts.Marshaller == nil {
-		defaultOpts.Marshaller = marshaller.DefaultJsonMarshaller
-	}
-
-	options := defaultOpts
-
-	// Apply functional options
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	// Preserve default marshaller if not set
-	if options.Marshaller == nil {
-		options.Marshaller = defaultOpts.Marshaller
-	}
-
-	// If JetStream is not enabled, clear JetStream options
-	if !options.JetStream.Enabled {
-		options.JetStream = JetStreamEventOptions{}
-	}
-
-	if options.Marshaller == nil {
-		options.Marshaller = marshaller.DefaultJsonMarshaller
-	}
+	options := NewEventHandlerOptions(opts...)
 
 	r.base.Add(subject, handler, options, middlewares...)
 }
