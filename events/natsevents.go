@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/graceful"
 	"github.com/leinodev/deez-nats/internal/lifecycle"
 	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/provider"
@@ -28,7 +27,6 @@ type natsEventsImpl struct {
 
 	lifecycleMgr *lifecycle.Manager
 	subsTracker  *subscriptions.Tracker
-	shutdownMgr  *graceful.ShutdownManager
 
 	provider provider.TransportProvider
 
@@ -61,7 +59,6 @@ func NewNatsEvents(nc *nats.Conn, opts ...EventsOption) NatsEvents {
 		options:      options,
 		lifecycleMgr: lifecycle.NewManager(),
 		subsTracker:  subscriptions.NewTracker(),
-		shutdownMgr:  graceful.NewShutdownManager(),
 	}
 
 	e.rootRouter = newEventRouter("", e.options.DefaultHandlerOptions)
@@ -82,8 +79,6 @@ func (e *natsEventsImpl) AddEventHandlerWithMiddlewares(subject string, handler 
 func (e *natsEventsImpl) Group(group string) EventRouter {
 	return e.rootRouter.Group(group)
 }
-
-// public methods
 
 func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, opts ...EventPublishOption) error {
 	if subject == "" {
@@ -106,11 +101,10 @@ func (e *natsEventsImpl) Emit(ctx context.Context, subject string, payload any, 
 
 	return e.provider.Publish(ctx, msg, publishOpts)
 }
-
 func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 	handler := func(route eventInfo) nats.MsgHandler {
 		return e.wrapMsgHandler(
-			// ctx,
+			ctx,
 			route,
 			middleware.Apply(route.handler, route.middlewares, true),
 		)
@@ -153,7 +147,6 @@ func (e *natsEventsImpl) StartWithContext(ctx context.Context) error {
 
 	return nil
 }
-
 func (e *natsEventsImpl) Shutdown(ctx context.Context) error {
 	e.subsTracker.Drain() // Drain subscriptions to stop accepting new messages
 
@@ -178,38 +171,17 @@ func (e *natsEventsImpl) Shutdown(ctx context.Context) error {
 func (e *natsEventsImpl) dfs() []eventInfo {
 	return e.rootRouter.dfs()
 }
-
-func (e *natsEventsImpl) wrapMsgHandler(info eventInfo, handler EventHandleFunc) nats.MsgHandler {
+func (e *natsEventsImpl) wrapMsgHandler(ctx context.Context, info eventInfo, handler EventHandleFunc) nats.MsgHandler {
 	return func(msg *nats.Msg) {
-		if !e.shutdownMgr.StartHandler() {
-			return
-		}
-		defer e.shutdownMgr.FinishHandler()
-
-		handlerCtx := e.shutdownMgr.ShutdownContext()
-		eventCtx := newEventContext(handlerCtx, msg, info.options.Marshaller)
+		eventCtx := newEventContext(ctx, msg, info.options.Marshaller)
 
 		if err := handler(eventCtx); err != nil {
-			e.handleHandlerError(eventCtx, info.options.JetStream)
+			eventCtx.Nak()
 			return
 		}
-
-		e.handleHandlerSuccess(eventCtx, info.options.JetStream)
+		eventCtx.Ack()
 	}
 }
-
-func (e *natsEventsImpl) handleHandlerError(eventCtx EventContext, jsOpts JetStreamEventOptions) {
-	if jsOpts.Enabled {
-		_ = eventCtx.Nak()
-	}
-}
-
-func (e *natsEventsImpl) handleHandlerSuccess(eventCtx EventContext, jsOpts JetStreamEventOptions) {
-	if jsOpts.Enabled && jsOpts.AutoAck {
-		_ = eventCtx.Ack()
-	}
-}
-
 func (e *natsEventsImpl) mergePublishOptions(opts ...EventPublishOption) EventPublishOptions {
 	merged := e.options.DefaultPublishOptions
 
