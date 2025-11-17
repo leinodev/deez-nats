@@ -105,15 +105,15 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 func (r *natsRpcImpl) Shutdown(ctx context.Context) error {
 	r.subsTracker.Drain() // Drain subscriptions to stop accepting new messages
 
-	rpcsFinished := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
 		r.handlersWatch.Wait() // Wait for all active handlers to finish.
-		<-rpcsFinished
-		close(rpcsFinished)
+		<-finished
+		close(finished)
 	}()
 
 	select {
-	case <-rpcsFinished:
+	case <-finished:
 		break
 	case <-ctx.Done():
 		return fmt.Errorf("failed to wait for handlers finish: %w", context.DeadlineExceeded)

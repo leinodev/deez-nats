@@ -3,11 +3,11 @@ package subscriptions
 import (
 	"sync"
 
-	"github.com/nats-io/nats.go"
+	"github.com/leinodev/deez-nats/internal/provider"
 )
 
 type sub struct {
-	Sub   *nats.Subscription
+	Sub   provider.TransportSubscription
 	Dirty bool
 }
 
@@ -22,7 +22,7 @@ func NewTracker() *Tracker {
 	}
 }
 
-func (m *Tracker) Track(s *nats.Subscription) {
+func (m *Tracker) Track(s provider.TransportSubscription) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

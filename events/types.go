@@ -6,6 +6,7 @@ import (
 
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 type EventHandleFunc func(EventContext) error
@@ -42,6 +43,7 @@ type EventContext interface {
 }
 
 type EventsOptions struct {
+	QueueGroup            string
 	DefaultHandlerOptions EventHandlerOptions
 	DefaultPublishOptions EventPublishOptions
 	JetStream             nats.JetStreamContext
@@ -49,9 +51,10 @@ type EventsOptions struct {
 }
 
 type EventHandlerOptions struct {
-	Marshaller marshaller.PayloadMarshaller
-	Queue      string
-	JetStream  JetStreamEventOptions
+	Marshaller        marshaller.PayloadMarshaller
+	Queue             string
+	JetStreamInstance jetstream.JetStream
+	JetStream         JetStreamEventOptions
 }
 
 type JetStreamEventOptions struct {

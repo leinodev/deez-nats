@@ -10,6 +10,11 @@ import (
 // EventsOption is a functional option for configuring EventsOptions
 type EventsOption func(*EventsOptions)
 
+func WithQueueGroup(queueGroup string) EventsOption {
+	return func(opts *EventsOptions) {
+		opts.QueueGroup = queueGroup
+	}
+}
 func WithTimeout(timeout time.Duration) EventsOption {
 	return func(opts *EventsOptions) {
 		opts.DefaultHandlerOptions.JetStream.PullExpire = timeout
@@ -184,6 +189,7 @@ func NewEventPublishOptions(opts ...EventPublishOption) EventPublishOptions {
 // NewEventsOptions creates EventsOptions from functional options
 func NewEventsOptions(opts ...EventsOption) EventsOptions {
 	eventsOpts := EventsOptions{
+		QueueGroup: "",
 		DefaultHandlerOptions: EventHandlerOptions{
 			Marshaller: marshaller.DefaultJsonMarshaller,
 			JetStream: JetStreamEventOptions{
