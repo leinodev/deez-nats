@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/leinodev/deez-nats/internal/testutil"
+	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 type sampleEvent struct {
@@ -19,12 +21,12 @@ type sampleEvent struct {
 func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewCoreNatsEvents(nc)
+	evts := NewCoreEvents(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.basic.%d", time.Now().UnixNano())
 
-	evts.AddEventHandler(subject, func(ctx EventContext) error {
+	evts.AddEventHandler(subject, func(ctx EventContext[*nats.Msg, nats.AckOpt]) error {
 		var payload sampleEvent
 		if err := ctx.Event(&payload); err != nil {
 			t.Errorf("event deserialization failed: %v", err)
@@ -35,6 +37,8 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 		default:
 		}
 		return nil
+	}, func(opts *CoreEventHandlerOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,7 +54,9 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 		Name: "basic-event",
 	}
 
-	if err := evts.Emit(context.Background(), subject, want); err != nil {
+	if err := evts.Emit(context.Background(), subject, want, func(opts *CoreEventEmitOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
+	}); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 
@@ -72,12 +78,17 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 
 func TestEventsIntegrationJetStream(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
-	js := testutil.RequireJetStream(t, nc)
+	jsCtx := testutil.RequireJetStream(t, nc)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("failed to create jetstream: %v", err)
+	}
 
 	streamName := fmt.Sprintf("INTEGRATION_EVENTS_%d", time.Now().UnixNano())
 	subject := fmt.Sprintf("integration.js.%d", time.Now().UnixNano())
 
-	if _, err := js.AddStream(&nats.StreamConfig{
+	if _, err := jsCtx.AddStream(&nats.StreamConfig{
 		Name:     streamName,
 		Subjects: []string{subject},
 		Storage:  nats.MemoryStorage,
@@ -85,14 +96,17 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		t.Fatalf("jetstream stream creation failed: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = js.DeleteStream(streamName)
+		_ = jsCtx.DeleteStream(streamName)
 	})
 
-	evts := NewJsNatsEvents(nc, streamName)
+	evts := NewJetStreamEvents(js, func(opts *JetStreamEventsOptions) {
+		opts.Stream = streamName
+		opts.DeliverGroup = "test-group"
+	})
 
 	received := make(chan sampleEvent, 1)
 
-	evts.AddEventHandler(subject, func(ctx EventContext) error {
+	evts.AddEventHandler(subject, func(ctx EventContext[jetstream.Msg, any]) error {
 		var payload sampleEvent
 		if err := ctx.Event(&payload); err != nil {
 			t.Errorf("event deserialization failed: %v", err)
@@ -103,7 +117,9 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		default:
 		}
 		return nil
-	}, WithHandlerJetStream(WithJSEnabled(true), WithJSAutoAck(true)))
+	}, func(opts *JetStreamEventHandlerOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startErr := make(chan error, 1)
@@ -118,9 +134,9 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		Name: "jetstream-event",
 	}
 
-	if err := evts.Emit(context.Background(), subject, want, WithPublishJetStreamOptions(
-		nats.MsgId(fmt.Sprintf("msg-%d", time.Now().UnixNano())),
-	)); err != nil {
+	if err := evts.Emit(context.Background(), subject, want, func(opts *JetStreamEventEmitOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
+	}); err != nil {
 		t.Fatalf("jetstream event publish failed: %v", err)
 	}
 
@@ -157,7 +173,7 @@ func waitForSubscriptions(t *testing.T, nc *nats.Conn) {
 func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewCoreNatsEvents(nc)
+	evts := NewCoreEvents(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.shutdown.%d", time.Now().UnixNano())
@@ -166,7 +182,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	handlerFinished := make(chan struct{})
 	shutdownComplete := make(chan struct{})
 
-	evts.AddEventHandler(subject, func(ctx EventContext) error {
+	evts.AddEventHandler(subject, func(ctx EventContext[*nats.Msg, nats.AckOpt]) error {
 		close(handlerStarted)
 		// Simulate long processing
 		time.Sleep(500 * time.Millisecond)
@@ -181,6 +197,8 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 		}
 		close(handlerFinished)
 		return nil
+	}, func(opts *CoreEventHandlerOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -197,7 +215,9 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	}
 
 	// Send event
-	if err := evts.Emit(context.Background(), subject, want); err != nil {
+	if err := evts.Emit(context.Background(), subject, want, func(opts *CoreEventEmitOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
+	}); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 
@@ -250,13 +270,13 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 	nc := testutil.ConnectToNATS(t)
 
-	evts := NewCoreNatsEvents(nc)
+	evts := NewCoreEvents(nc)
 
 	subject := fmt.Sprintf("integration.shutdown.timeout.%d", time.Now().UnixNano())
 
 	handlerStarted := make(chan struct{})
 
-	evts.AddEventHandler(subject, func(ctx EventContext) error {
+	evts.AddEventHandler(subject, func(ctx EventContext[*nats.Msg, nats.AckOpt]) error {
 		close(handlerStarted)
 		// Simulate very long processing that will exceed shutdown timeout
 		time.Sleep(2 * time.Second)
@@ -265,6 +285,8 @@ func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 			return err
 		}
 		return nil
+	}, func(opts *CoreEventHandlerOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -281,7 +303,9 @@ func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 	}
 
 	// Send event
-	if err := evts.Emit(context.Background(), subject, want); err != nil {
+	if err := evts.Emit(context.Background(), subject, want, func(opts *CoreEventEmitOptions) {
+		opts.Marshaller = marshaller.DefaultJsonMarshaller
+	}); err != nil {
 		t.Fatalf("event publish failed: %v", err)
 	}
 

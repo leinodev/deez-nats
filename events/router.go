@@ -4,55 +4,38 @@ import (
 	"github.com/leinodev/deez-nats/internal/router"
 )
 
-type eventInfo struct {
-	subject     string
-	handler     EventHandleFunc
-	options     EventHandlerOptions
-	middlewares []EventMiddlewareFunc
+type eventRouterImpl[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlewareFunc any] struct {
+	base *router.Base[HandlerFunc[TMessage, TAckOptFunc], TMiddlewareFunc, THandlerOption]
 }
 
-type eventRouterImpl struct {
-	base *router.Base[EventHandleFunc, EventMiddlewareFunc, EventHandlerOptions]
-}
-
-func newEventRouter(groupName string, defaultOpts EventHandlerOptions) EventRouter {
-	return &eventRouterImpl{
-		base: router.NewBase[EventHandleFunc, EventMiddlewareFunc](groupName, defaultOpts),
+func newEventRouter[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlewareFunc any](group string, defaultOpts THandlerOption) *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc] {
+	return &eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]{
+		base: router.NewBase[HandlerFunc[TMessage, TAckOptFunc], TMiddlewareFunc](group, defaultOpts),
 	}
 }
 
-func (r *eventRouterImpl) Use(middlewares ...EventMiddlewareFunc) {
+func (r *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]) dfs() []router.Record[HandlerFunc[TMessage, TAckOptFunc], TMiddlewareFunc, THandlerOption] {
+	return r.base.DFS()
+}
+func (r *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]) Use(middlewares ...TMiddlewareFunc) {
 	r.base.Use(middlewares...)
 }
-
-func (r *eventRouterImpl) AddEventHandler(subject string, handler EventHandleFunc, opts ...EventHandlerOption) {
-	r.AddEventHandlerWithMiddlewares(subject, handler, nil, opts...)
-}
-
-func (r *eventRouterImpl) AddEventHandlerWithMiddlewares(subject string, handler EventHandleFunc, middlewares []EventMiddlewareFunc, opts ...EventHandlerOption) {
+func (r *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]) AddEventHandler(subject string, handler HandlerFunc[TMessage, TAckOptFunc], opts ...func(*THandlerOption)) {
 	if subject == "" {
 		panic("empty event subject name")
 	}
-	options := NewEventHandlerOptions(opts...)
 
-	r.base.Add(subject, handler, options, middlewares...)
-}
+	defaultOpts := r.base.DefaultOptions()
+	options := defaultOpts
 
-func (r *eventRouterImpl) Group(group string) EventRouter {
-	child := r.base.Child(group)
-	return &eventRouterImpl{base: child}
-}
-
-func (r *eventRouterImpl) dfs() []eventInfo {
-	records := r.base.DFS()
-	routes := make([]eventInfo, 0, len(records))
-	for _, rec := range records {
-		routes = append(routes, eventInfo{
-			subject:     rec.Name,
-			handler:     rec.Handler,
-			options:     rec.Options,
-			middlewares: rec.Middlewares,
-		})
+	// Apply functional options
+	for _, opt := range opts {
+		opt(&options)
 	}
-	return routes
+
+	r.base.Add(subject, handler, options)
+}
+func (r *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]) Group(group string) EventRouter[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc] {
+	child := r.base.Child(group)
+	return &eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]{base: child}
 }

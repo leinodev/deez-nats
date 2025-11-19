@@ -2,75 +2,81 @@ package events
 
 import (
 	"context"
-	"time"
 
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-type EventHandleFunc func(EventContext) error
-type EventMiddlewareFunc func(next EventHandleFunc) EventHandleFunc
+// Core
 
-type NatsEvents interface {
-	EventRouter
+type CoreEventHandlerOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Queue      string
+}
+type CoreEventEmitOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Headers    nats.Header
+}
+type CoreEventsOptions struct {
+	QueueGroup string
+}
+type CoreNatsEvents interface {
+	NatsEvents[*nats.Msg, nats.AckOpt, CoreEventHandlerOptions, CoreEventEmitOptions]
+}
+type CoreEventsOptionFunc func(*CoreEventsOptions)
+type CoreEventHandlerOptionFunc func(*CoreEventHandlerOptions)
+type CoreEventEmitOptionFunc func(*CoreEventEmitOptions)
+
+// JetStream
+
+type JetStreamEventHandlerOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Headers    nats.Header
+}
+type JetStreamEventEmitOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Headers    nats.Header
+}
+type JetStreamEventsOptions struct {
+	Stream       string
+	DeliverGroup string
+}
+type JetStreamNatsEvents interface {
+	NatsEvents[jetstream.Msg, any, JetStreamEventHandlerOptions, JetStreamEventEmitOptions]
+}
+type JetStreamEventsOptionFunc func(*JetStreamEventsOptions)
+type JetStreamEventHandlerOptionFunc func(*JetStreamEventHandlerOptions)
+type JetStreamEventEmitOptionFunc func(*JetStreamEventEmitOptions)
+
+// Abstract interfaces
+
+type NatsEvents[TMessage any, TAckOptFunc any, THandlerOption any, TEmitOption any] interface {
+	EventRouter[TMessage, TAckOptFunc, THandlerOption, MiddlewareFunc[TMessage, TAckOptFunc]]
 
 	StartWithContext(ctx context.Context) error
-	Emit(ctx context.Context, subject string, payload any, opts ...EventPublishOption) error
+	Emit(ctx context.Context, subject string, payload any, opts ...func(*TEmitOption)) error
 	Shutdown(ctx context.Context) error
 }
 
-type EventRouter interface {
-	Use(middlewares ...EventMiddlewareFunc)
-	AddEventHandler(subject string, handler EventHandleFunc, opts ...EventHandlerOption)
-	AddEventHandlerWithMiddlewares(subject string, handler EventHandleFunc, middlewares []EventMiddlewareFunc, opts ...EventHandlerOption)
-	Group(group string) EventRouter
-
-	dfs() []eventInfo
+type EventRouter[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlewareFunc any] interface {
+	Use(middlewares ...TMiddlewareFunc)
+	AddEventHandler(subject string, handler HandlerFunc[TMessage, TAckOptFunc], opts ...func(*THandlerOption))
+	Group(group string) EventRouter[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]
 }
 
-type EventContext interface {
+type EventContext[TMessage any, TAckOptFunc any] interface {
 	context.Context
 	Event(data any) error
 
 	Headers() nats.Header
-	Message() *nats.Msg
+	Message() TMessage
 
-	Ack(opts ...nats.AckOpt) error
-	Nak(opts ...nats.AckOpt) error
-	Term(opts ...nats.AckOpt) error
-	InProgress(opts ...nats.AckOpt) error
+	Ack(opts ...TAckOptFunc) error
+	Nak(opts ...TAckOptFunc) error
+	Term(opts ...TAckOptFunc) error
+	InProgress(opts ...TAckOptFunc) error
 }
 
-type EventsOptions struct {
-	QueueGroup            string
-	DefaultHandlerOptions EventHandlerOptions
-	DefaultPublishOptions EventPublishOptions
-	JetStreamOptions      []nats.JSOpt
-}
-
-type EventHandlerOptions struct {
-	Marshaller        marshaller.PayloadMarshaller
-	Queue             string
-	JetStreamInstance jetstream.JetStream
-	JetStream         JetStreamEventOptions
-}
-
-type JetStreamEventOptions struct {
-	Enabled          bool
-	AutoAck          bool
-	Pull             bool
-	PullBatch        int
-	PullExpire       time.Duration
-	PullRetryDelay   time.Duration
-	Durable          string
-	DeliverGroup     string
-	SubjectTransform func(subject string) string
-	SubscribeOptions []nats.SubOpt
-}
-
-type EventPublishOptions struct {
-	Marshaller marshaller.PayloadMarshaller
-	Headers    nats.Header
-	JetStream  []nats.PubOpt
-}
+type HandlerFunc[TMessage any, TAckOptFunc any] func(EventContext[TMessage, TAckOptFunc]) error
+type MiddlewareFunc[TMessage any, TAckOptFunc any] func(next HandlerFunc[TMessage, TAckOptFunc]) HandlerFunc[TMessage, TAckOptFunc]

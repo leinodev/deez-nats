@@ -1,4 +1,4 @@
-package newevents
+package events
 
 import (
 	"context"
