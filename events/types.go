@@ -20,6 +20,11 @@ type CoreEventEmitOptions struct {
 }
 type CoreEventsOptions struct {
 	QueueGroup string
+
+	DefaultEmitHeaders    nats.Header
+	DefaultEmitMarshaller marshaller.PayloadMarshaller
+
+	DefaultEventHandlerMarshaller marshaller.PayloadMarshaller
 }
 type CoreNatsEvents interface {
 	NatsEvents[*nats.Msg, nats.AckOpt, CoreEventHandlerOptions, CoreEventEmitOptions]
@@ -32,7 +37,6 @@ type CoreEventEmitOptionFunc func(*CoreEventEmitOptions)
 
 type JetStreamEventHandlerOptions struct {
 	Marshaller marshaller.PayloadMarshaller
-	Headers    nats.Header
 }
 type JetStreamEventEmitOptions struct {
 	Marshaller marshaller.PayloadMarshaller
@@ -41,6 +45,11 @@ type JetStreamEventEmitOptions struct {
 type JetStreamEventsOptions struct {
 	Stream       string
 	DeliverGroup string
+
+	DefaultEmitHeaders    nats.Header
+	DefaultEmitMarshaller marshaller.PayloadMarshaller
+
+	DefaultEventHandlerMarshaller marshaller.PayloadMarshaller
 }
 type JetStreamNatsEvents interface {
 	NatsEvents[jetstream.Msg, any, JetStreamEventHandlerOptions, JetStreamEventEmitOptions]

@@ -9,7 +9,7 @@ Utilities for building RPC and event-driven applications on top of [NATS](https:
 - **Unified router** with grouping (`Group`) and middleware inheritance for both RPC and events.
 - **RPC handling** with automatic ack/nak management and a convenient `RPCContext` for reading requests, sending responses, and working with headers.
 - **Event handlers with JetStream**: queue / pull consumers, auto-ack, durable configuration, and subject transforms.
-- **Typed helpers** for RPC (`rpc.AddTyped…`) and events (`events.AddTyped…`) with generics support and pluggable marshallers.
+- **Typed helpers** for RPC (`rpc.AddTyped…`) and events (`events.AddTypedCore…` / `events.AddTypedJetStream…`) with generics support and pluggable marshallers.
 - **Flexible marshallers**: built-in JSON and Protobuf implementations, plus the option to provide your own.
 - **Examples** for a quick start: from a simple scenario to a fully typed pipeline.
 
@@ -101,56 +101,141 @@ rpcSvc.CallRPC(ctx, "user.ping", request, &response,
 
 ## Events
 
-- `events.NewNatsEvents` creates a service that supports standard subscriptions and JetStream.
-- `AddEventHandler` lets you specify a queue (`Queue`) and JetStream options: durable, pull, deliver group, subject transform, etc.
-- For pull consumers, set `JetStream.Pull = true`, `PullBatch`, `PullExpire`, and `Durable`.
-- `EventContext` provides:
-  - `Event(&payload)` — message deserialization;
-  - `Ack/Nak/Term/InProgress` — JetStream delivery control;
-  - access to `Headers()` and the original `*nats.Msg`.
-- Emit events with `Emit(ctx, subject, payload, opts...)`; you can include headers and JetStream options via functional options.
-- Typed helpers: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
+The library provides two event implementations:
 
-### Events Options
+- **`events.NewCoreEvents`** — standard NATS subscriptions with queue groups
+- **`events.NewJetStreamEvents`** — JetStream-based events with consumer configuration
 
-Use functional options to configure event service:
+### Core Events
 
 ```go
-eventsSvc := events.NewNatsEvents(nc,
-    events.WithJetStreamContext(js),
-    events.WithTimeout(time.Second),
-    events.WithJetStream(true),
-    events.WithAutoAck(true),
-    events.WithDefaultHandlerOptions(
-        events.WithHandlerQueue("my-queue"),
-        events.WithHandlerJetStream(
-            events.WithJSEnabled(true),
-            events.WithJSAutoAck(true),
-            events.WithJSDurable("my-consumer"),
-        ),
-    ),
-    events.WithDefaultPublishOptions(
-        events.WithPublishMarshaller(customMarshaller),
-        events.WithPublishHeader("X-Source", "my-service"),
-    ),
+nc, _ := nats.Connect(nats.DefaultURL)
+defer nc.Close()
+
+coreEvents := events.NewCoreEvents(nc,
+    events.WithCoreQueueGroup("my-queue-group"),
+    events.WithCoreDefaultEmitMarshaller(customMarshaller),
+    events.WithCoreDefaultEmitHeader("X-Service", "my-service"),
+    events.WithCoreDefaultEventHandlerMarshaller(customMarshaller),
 )
 
-// Add handler with JetStream options
-eventsSvc.AddEventHandler("entity.created", handler,
-    events.WithHandlerJetStream(
-        events.WithJSEnabled(true),
-        events.WithJSAutoAck(true),
-        events.WithJSDurable("entity-created-consumer"),
-        events.WithJSDeliverGroup("entity-events"),
-    ),
-)
+coreEvents.AddEventHandler("user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
+    var payload UserCreatedEvent
+    if err := ctx.Event(&payload); err != nil {
+        return err
+    }
+    fmt.Printf("created: %#v\n", payload)
+    return nil
+}, events.WithCoreHandlerQueue("handler-queue"))
 
-// Emit event with options
-eventsSvc.Emit(ctx, "user.created", payload,
-    events.WithPublishHeader("X-Source", "my-service"),
-    events.WithPublishJetStreamOptions(nats.MsgId("msg-id")),
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+go coreEvents.StartWithContext(ctx)
+
+_ = coreEvents.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"},
+    events.WithCoreEmitHeader("X-Request-ID", "123"),
 )
 ```
+
+### JetStream Events
+
+```go
+js, _ := jetstream.New(nc)
+
+jetStreamEvents := events.NewJetStreamEvents(js,
+    events.WithJetStreamStream("EVENTS"),
+    events.WithJetStreamDeliverGroup("events-group"),
+    events.WithJetStreamDefaultEmitMarshaller(customMarshaller),
+    events.WithJetStreamDefaultEmitHeader("X-Service", "my-service"),
+    events.WithJetStreamDefaultEventHandlerMarshaller(customMarshaller),
+)
+
+jetStreamEvents.AddEventHandler("entity.created", handler,
+    events.WithJetStreamHandlerMarshaller(customMarshaller),
+)
+
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+go jetStreamEvents.StartWithContext(ctx)
+
+_ = jetStreamEvents.Emit(ctx, "entity.created", payload,
+    events.WithJetStreamEmitMarshaller(customMarshaller),
+    events.WithJetStreamEmitHeader("X-Request-ID", "123"),
+)
+```
+
+### Event Options
+
+**Core Events Options:**
+- `WithCoreQueueGroup(queueGroup)` — default queue group for all handlers
+- `WithCoreDefaultEmitMarshaller(m)` — default marshaller for all emits
+- `WithCoreDefaultEmitHeader(key, value)` — default header for all emits
+- `WithCoreDefaultEmitHeaders(headers)` — default headers for all emits
+- `WithCoreDefaultEventHandlerMarshaller(m)` — default marshaller for all handlers
+- `WithCoreHandlerMarshaller(m)` — marshaller for specific handler
+- `WithCoreHandlerQueue(queue)` — queue for specific handler (overrides default)
+- `WithCoreEmitMarshaller(m)` — marshaller for specific emit (overrides default)
+- `WithCoreEmitHeader(key, value)` — header for specific emit (merged with defaults)
+- `WithCoreEmitHeaders(headers)` — headers for specific emit (merged with defaults)
+
+**JetStream Events Options:**
+- `WithJetStreamStream(stream)` — JetStream stream name
+- `WithJetStreamDeliverGroup(group)` — deliver group for consumers
+- `WithJetStreamDefaultEmitMarshaller(m)` — default marshaller for all emits
+- `WithJetStreamDefaultEmitHeader(key, value)` — default header for all emits
+- `WithJetStreamDefaultEmitHeaders(headers)` — default headers for all emits
+- `WithJetStreamDefaultEventHandlerMarshaller(m)` — default marshaller for all handlers
+- `WithJetStreamHandlerMarshaller(m)` — marshaller for specific handler
+- `WithJetStreamEmitMarshaller(m)` — marshaller for specific emit (overrides default)
+- `WithJetStreamEmitHeader(key, value)` — header for specific emit (merged with defaults)
+
+### EventContext
+
+`EventContext` provides:
+- `Event(&payload)` — message deserialization
+- `Ack/Nak/Term/InProgress` — JetStream delivery control (for JetStream events)
+- `Headers()` — access to message headers
+- `Message()` — access to the original message
+
+**Note:** `DefaultHeaders` in `JetStreamEventHandlerOptions` are currently defined but not actively used in handler processing. They are reserved for future functionality.
+
+### Typed Event Handlers
+
+For type-safe event handling with generics, use typed helpers:
+
+**Core Events:**
+```go
+events.AddTypedCoreJsonEventHandler(coreEvents, "user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
+    fmt.Printf("user created: %#v\n", payload)
+    return nil
+})
+
+events.AddTypedCoreProtoEventHandler(coreEvents, "user.updated", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserUpdatedEvent) error {
+    fmt.Printf("user updated: %#v\n", payload)
+    return nil
+}, events.WithCoreHandlerQueue("user-queue"))
+```
+
+**JetStream Events:**
+```go
+events.AddTypedJetStreamJsonEventHandler(jetStreamEvents, "entity.created", func(ctx events.EventContext[jetstream.Msg, any], payload EntityCreatedEvent) error {
+    fmt.Printf("entity created: %#v\n", payload)
+    return nil
+})
+
+events.AddTypedJetStreamEventHandlerWithMarshaller(jetStreamEvents, "entity.updated", func(ctx events.EventContext[jetstream.Msg, any], payload EntityUpdatedEvent) error {
+    fmt.Printf("entity updated: %#v\n", payload)
+    return nil
+}, customMarshaller, events.WithJetStreamHandlerMarshaller(customMarshaller))
+```
+
+Available typed helpers:
+- `AddTypedCoreEventHandler` / `AddTypedJetStreamEventHandler` — base functions
+- `AddTypedCoreEventHandlerWithMarshaller` / `AddTypedJetStreamEventHandlerWithMarshaller` — with custom marshaller
+- `AddTypedCoreJsonEventHandler` / `AddTypedJetStreamJsonEventHandler` — with JSON marshaller
+- `AddTypedCoreProtoEventHandler` / `AddTypedJetStreamProtoEventHandler` — with Protobuf marshaller
 
 ## Graceful Shutdown
 

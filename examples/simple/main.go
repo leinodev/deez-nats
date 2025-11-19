@@ -40,12 +40,12 @@ func main() {
 	}()
 
 	// Emit example events
-	err = eventService.Emit(ctx, "entity.created", protocoljson.EntityEvent{ID: "42", Name: "example"}, nil)
+	err = eventService.Emit(ctx, "entity.created", protocoljson.EntityEvent{ID: "42", Name: "example"})
 	if err != nil {
 		log.Printf("publish entity.created: %v", err)
 	}
 
-	err = eventService.Emit(ctx, "entity.updated", protocoljson.EntityEvent{ID: "42", Name: "example-renamed"}, nil)
+	err = eventService.Emit(ctx, "entity.updated", protocoljson.EntityEvent{ID: "42", Name: "example-renamed"})
 	if err != nil {
 		log.Printf("publish entity.updated: %v", err)
 	}

@@ -23,13 +23,16 @@ type coreNatsEventsImpl struct {
 }
 
 func NewCoreEvents(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
-	options := CoreEventsOptions{}
+	options := CoreEventsOptions{
+		DefaultEmitMarshaller:         marshaller.DefaultJsonMarshaller,
+		DefaultEventHandlerMarshaller: marshaller.DefaultJsonMarshaller,
+	}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	handlerOptions := CoreEventHandlerOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
+		Marshaller: options.DefaultEventHandlerMarshaller,
 	}
 
 	return &coreNatsEventsImpl{
@@ -59,8 +62,13 @@ func (e *coreNatsEventsImpl) StartWithContext(ctx context.Context) error {
 	for _, route := range e.router.dfs() {
 		handler := e.wrapHandler(ctx, route)
 
-		if e.options.QueueGroup != "" {
-			sub, err = e.connection.QueueSubscribe(route.Name, e.options.QueueGroup, handler)
+		queueGroup := route.Options.Queue
+		if queueGroup == "" {
+			queueGroup = e.options.QueueGroup
+		}
+
+		if queueGroup != "" {
+			sub, err = e.connection.QueueSubscribe(route.Name, queueGroup, handler)
 		} else {
 			sub, err = e.connection.Subscribe(route.Name, handler)
 		}
@@ -89,7 +97,7 @@ func (e *coreNatsEventsImpl) Emit(ctx context.Context, subject string, payload a
 	}
 
 	emitOptions := CoreEventEmitOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
+		Marshaller: e.options.DefaultEmitMarshaller,
 	}
 	for _, opt := range opts {
 		opt(&emitOptions)
@@ -105,7 +113,7 @@ func (e *coreNatsEventsImpl) Emit(ctx context.Context, subject string, payload a
 	msg := &nats.Msg{
 		Subject: subject,
 		Data:    payloadBytes,
-		Header:  emitOptions.Headers,
+		Header:  mergeHeaders(e.options.DefaultEmitHeaders, emitOptions.Headers),
 	}
 
 	return e.connection.PublishMsg(msg)
@@ -134,12 +142,13 @@ func (e *coreNatsEventsImpl) Shutdown(ctx context.Context) error {
 // internal methods
 func (e *coreNatsEventsImpl) wrapHandler(ctx context.Context, route router.Record[HandlerFunc[*nats.Msg, nats.AckOpt], MiddlewareFunc[*nats.Msg, nats.AckOpt], CoreEventHandlerOptions]) nats.MsgHandler {
 	handler := middleware.Apply(route.Handler, route.Middlewares, true)
+	handlerOptions := route.Options
 
 	return func(msg *nats.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		eventCtx := newCoreContext(ctx, msg, route.Options.Marshaller)
+		eventCtx := newCoreContext(ctx, msg, handlerOptions.Marshaller)
 		err := handler(eventCtx)
 
 		if err != nil {

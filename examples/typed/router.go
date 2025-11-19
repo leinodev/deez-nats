@@ -40,19 +40,18 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 	return service
 }
 
-func NewEventRouter(nc *nats.Conn) events.NatsEvents {
-	service := events.NewNatsEvents(nc,
-		events.WithJetStream(true),
-		events.WithAutoAck(true),
+func NewEventRouter(nc *nats.Conn) events.CoreNatsEvents {
+	service := events.NewCoreEvents(nc,
+		events.WithCoreQueueGroup("user-queue"),
 	)
 
-	events.AddTypedEventHandler(service, "user.created", func(ctx events.EventContext, payload UserCreatedEvent) error {
-		fmt.Printf("user created via typed handler: %#v\n", payload)
+	events.AddTypedCoreJsonEventHandler(service, "user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
+		fmt.Printf("user created: %#v\n", payload)
 		return nil
 	})
 
-	events.AddTypedJsonEventHandler(service, "user.renamed", func(ctx events.EventContext, payload UserRenamedEvent) error {
-		fmt.Printf("user renamed via typed handler with marshaller: %#v\n", payload)
+	events.AddTypedCoreJsonEventHandler(service, "user.renamed", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserRenamedEvent) error {
+		fmt.Printf("user renamed: %#v\n", payload)
 		return nil
 	})
 

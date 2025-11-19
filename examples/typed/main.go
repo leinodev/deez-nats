@@ -72,12 +72,12 @@ func main() {
 	log.Println("Graceful shutdown completed")
 }
 
-func emitExamples(ctx context.Context, service events.NatsEvents) {
-	if err := service.Emit(ctx, "user.created", UserCreatedEvent{ID: "42", Name: "Typed Example"}, nil); err != nil {
+func emitExamples(ctx context.Context, service events.CoreNatsEvents) {
+	if err := service.Emit(ctx, "user.created", UserCreatedEvent{ID: "42", Name: "Typed Example"}); err != nil {
 		log.Printf("emit user.created: %v", err)
 	}
 
-	if err := service.Emit(ctx, "user.renamed", UserRenamedEvent{ID: "42", NewName: "Typed Example v2"}, nil); err != nil {
+	if err := service.Emit(ctx, "user.renamed", UserRenamedEvent{ID: "42", NewName: "Typed Example v2"}); err != nil {
 		log.Printf("emit user.renamed: %v", err)
 	}
 }

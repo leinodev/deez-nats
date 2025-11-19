@@ -19,21 +19,15 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 	return r
 }
 
-func NewEventRouter(nc *nats.Conn) events.NatsEvents {
-	e := events.NewNatsEvents(nc,
-		events.WithJetStream(true),
-		events.WithAutoAck(true),
+func NewEventRouter(nc *nats.Conn) events.CoreNatsEvents {
+	e := events.NewCoreEvents(nc,
+		events.WithCoreQueueGroup("entity-queue"),
 	)
 
 	e.Use(eventLoggingMiddleware)
 
 	e.AddEventHandler("entity.created", entityCreatedHandler,
-		events.WithHandlerJetStream(
-			events.WithJSEnabled(true),
-			events.WithJSAutoAck(true),
-			events.WithJSDurable("entity-created-consumer"),
-			events.WithJSDeliverGroup("entity-events"),
-		),
+		events.WithCoreHandlerQueue("entity-created-queue"),
 	)
 
 	e.AddEventHandler("entity.updated", entityUpdatedHandler)
@@ -54,14 +48,14 @@ func test1Handler(c rpc.RPCContext) error {
 	return nil
 }
 
-func eventLoggingMiddleware(next events.EventHandleFunc) events.EventHandleFunc {
-	return func(ctx events.EventContext) error {
+func eventLoggingMiddleware(next events.HandlerFunc[*nats.Msg, nats.AckOpt]) events.HandlerFunc[*nats.Msg, nats.AckOpt] {
+	return func(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
 		fmt.Printf("received event %s\n", ctx.Message().Subject)
 		return next(ctx)
 	}
 }
 
-func entityCreatedHandler(ctx events.EventContext) error {
+func entityCreatedHandler(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
 	var payload protocoljson.EntityEvent
 
 	if err := ctx.Event(&payload); err != nil {
@@ -72,7 +66,7 @@ func entityCreatedHandler(ctx events.EventContext) error {
 	return nil
 }
 
-func entityUpdatedHandler(ctx events.EventContext) error {
+func entityUpdatedHandler(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
 	var payload protocoljson.EntityEvent
 
 	if err := ctx.Event(&payload); err != nil {

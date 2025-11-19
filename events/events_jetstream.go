@@ -24,13 +24,16 @@ type jetStreamNatsEventsImpl struct {
 }
 
 func NewJetStreamEvents(js jetstream.JetStream, opts ...JetStreamEventsOptionFunc) JetStreamNatsEvents {
-	options := JetStreamEventsOptions{}
+	options := JetStreamEventsOptions{
+		DefaultEmitMarshaller:         marshaller.DefaultJsonMarshaller,
+		DefaultEventHandlerMarshaller: marshaller.DefaultJsonMarshaller,
+	}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	handlerOptions := JetStreamEventHandlerOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
+		Marshaller: options.DefaultEventHandlerMarshaller,
 	}
 
 	return &jetStreamNatsEventsImpl{
@@ -97,7 +100,7 @@ func (e *jetStreamNatsEventsImpl) Emit(ctx context.Context, subject string, payl
 	}
 
 	emitOptions := JetStreamEventEmitOptions{
-		Marshaller: marshaller.DefaultJsonMarshaller,
+		Marshaller: e.options.DefaultEmitMarshaller,
 	}
 	for _, opt := range opts {
 		opt(&emitOptions)
@@ -113,7 +116,7 @@ func (e *jetStreamNatsEventsImpl) Emit(ctx context.Context, subject string, payl
 	msg := &nats.Msg{
 		Subject: subject,
 		Data:    payloadBytes,
-		Header:  emitOptions.Headers,
+		Header:  mergeHeaders(e.options.DefaultEmitHeaders, emitOptions.Headers),
 	}
 
 	// TODO: pass options
@@ -151,12 +154,13 @@ func (e *jetStreamNatsEventsImpl) wrapHandler(
 	route router.Record[HandlerFunc[jetstream.Msg, any], MiddlewareFunc[jetstream.Msg, any], JetStreamEventHandlerOptions],
 ) jetstream.MessageHandler {
 	handler := middleware.Apply(route.Handler, route.Middlewares, true)
+	handlerOptions := route.Options
 
 	return func(msg jetstream.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		eventCtx := newJetStreamContext(ctx, msg, route.Options.Marshaller)
+		eventCtx := newJetStreamContext(ctx, msg, handlerOptions.Marshaller)
 		err := handler(eventCtx)
 
 		if err != nil {

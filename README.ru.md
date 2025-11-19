@@ -1,14 +1,14 @@
 # deez-nats
 
-Утилиты для построения RPC и event-driven приложений поверх [NATS](https://nats.io) на Go. Библиотека объединяет единый роутер для RPC-методов и событий, поддержку middlewares, типизированные обёртки и несколько маршаллизаторов (JSON и Protobuf), чтобы ускорить старт и облегчить поддержку сервиса.
+Утилиты для построения RPC и event-driven приложений поверх [NATS](https://nats.io) на Go. Библиотека объединяет единый роутер для RPC-методов и событий, поддержку middlewares, типизированные обёртки и несколько маршаллеров (JSON и Protobuf), чтобы ускорить старт и облегчить поддержку сервиса.
 
 ## Основные возможности
 
 - **Единый роутер** с возможностью группировки (`Group`) и наследованием middleware для RPC и событий.
 - **Обработка RPC-запросов** с автоматическим управлением ack/nak и удобным `RPCContext` для чтения запроса, отправки ответа и работы с заголовками.
 - **Event-хэндлеры с JetStream**: очередь / pull-консьюмеры, авто-ack, конфигурация durable и subject transform.
-- **Типизированные обёртки** для RPC (`rpc.AddTyped…`) и событий (`events.AddTyped…`) с поддержкой generics и выбором маршаллизатора.
-- **Гибкие маршаллизаторы**: готовые JSON и Protobuf, возможность подменить на свой.
+- **Типизированные обёртки** для RPC (`rpc.AddTyped…`) и событий (`events.AddTypedCore…` / `events.AddTypedJetStream…`) с поддержкой generics и выбором маршаллера.
+- **Гибкие маршаллеры**: готовые JSON и Protobuf, возможность подменить на свой.
 - **Примеры** для быстрого старта: простой сценарий и полностью типизированный пайплайн.
 
 ## Установка
@@ -25,7 +25,7 @@ go get github.com/leinodev/deez-nats
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewNatsEvents(nc)
+eventsSvc := events.NewCoreEvents(nc)
 rpcSvc := rpc.NewNatsRPC(nc)
 
 rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
@@ -36,7 +36,7 @@ rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     return ctx.Ok(PingResponse{Message: "pong"})
 })
 
-eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
+eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
     var payload UserCreatedEvent
     if err := ctx.Event(&payload); err != nil {
         return err
@@ -58,14 +58,14 @@ _ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp)
 
 ## RPC
 
-- `rpc.NewNatsRPC` создаёт сервис с дефолтным JSON-маршаллизатором.
+- `rpc.NewNatsRPC` создаёт сервис с дефолтным JSON-маршаллером.
 - `AddRPCHandler` иерархически строит дерево маршрутов; можно группировать методы (`Service.Group("user")`).
 - `RPCContext` предоставляет:
   - `Request(&reqStruct)` — десериализация запроса;
   - `Ok(response)` — отправка успешного ответа;
   - `Headers()` и `RequestHeaders()` — работа с заголовками.
 - `CallRPC` инкапсулирует запрос с таймаутом NATS и десериализацией респондов.
-- Для generics используйте `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler` или `AddTypedRPCHandler` с кастомным маршаллизатором.
+- Для generics используйте `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler` или `AddTypedRPCHandler` с кастомным маршаллером.
 - Используйте `rpc.WithHandlerMiddlewares(...)` для добавления middlewares к конкретным обработчикам.
 
 ### Опции RPC
@@ -99,56 +99,141 @@ rpcSvc.CallRPC(ctx, "user.ping", request, &response,
 
 ## События
 
-- `events.NewNatsEvents` создаёт сервис, поддерживающий обычные подписки и JetStream.
-- `AddEventHandler` позволяет указать очередь (`Queue`) и JetStream-настройки: durable, pull, deliver group, subject transform и т.д.
-- Для pull-консьюмеров задайте `JetStream.Pull = true`, `PullBatch`, `PullExpire` и `Durable`.
-- `EventContext` предоставляет:
-  - `Event(&payload)` — десериализация сообщения;
-  - `Ack/Nak/Term/InProgress` — управление delivery в JetStream;
-  - доступ к `Headers()` и исходному `*nats.Msg`.
-- Эмиссия событий через `Emit(ctx, subject, payload, opts...)`; можно передать заголовки и JetStream опции через функциональные опции.
-- Типизированные обёртки: `events.AddTypedEventHandler`, `AddTypedJsonEventHandler`, `AddTypedProtoEventHandler`.
+Библиотека предоставляет две реализации событий:
+
+- **`events.NewCoreEvents`** — стандартные подписки NATS с группами очередей
+- **`events.NewJetStreamEvents`** — события на основе JetStream с конфигурацией консьюмеров
+
+### Core Events
+
+```go
+nc, _ := nats.Connect(nats.DefaultURL)
+defer nc.Close()
+
+coreEvents := events.NewCoreEvents(nc,
+    events.WithCoreQueueGroup("my-queue-group"),
+    events.WithCoreDefaultEmitMarshaller(customMarshaller),
+    events.WithCoreDefaultEmitHeader("X-Service", "my-service"),
+    events.WithCoreDefaultEventHandlerMarshaller(customMarshaller),
+)
+
+coreEvents.AddEventHandler("user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
+    var payload UserCreatedEvent
+    if err := ctx.Event(&payload); err != nil {
+        return err
+    }
+    fmt.Printf("created: %#v\n", payload)
+    return nil
+}, events.WithCoreHandlerQueue("handler-queue"))
+
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+go coreEvents.StartWithContext(ctx)
+
+_ = coreEvents.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"},
+    events.WithCoreEmitHeader("X-Request-ID", "123"),
+)
+```
+
+### JetStream Events
+
+```go
+js, _ := jetstream.New(nc)
+
+jetStreamEvents := events.NewJetStreamEvents(js,
+    events.WithJetStreamStream("EVENTS"),
+    events.WithJetStreamDeliverGroup("events-group"),
+    events.WithJetStreamDefaultEmitMarshaller(customMarshaller),
+    events.WithJetStreamDefaultEmitHeader("X-Service", "my-service"),
+    events.WithJetStreamDefaultEventHandlerMarshaller(customMarshaller),
+)
+
+jetStreamEvents.AddEventHandler("entity.created", handler,
+    events.WithJetStreamHandlerMarshaller(customMarshaller),
+)
+
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+go jetStreamEvents.StartWithContext(ctx)
+
+_ = jetStreamEvents.Emit(ctx, "entity.created", payload,
+    events.WithJetStreamEmitMarshaller(customMarshaller),
+    events.WithJetStreamEmitHeader("X-Request-ID", "123"),
+)
+```
 
 ### Опции Events
 
-Используйте функциональные опции для настройки сервиса событий:
+**Core Events Options:**
+- `WithCoreQueueGroup(queueGroup)` — группа очереди по умолчанию для всех обработчиков
+- `WithCoreDefaultEmitMarshaller(m)` — маршаллер по умолчанию для всех эмиссий
+- `WithCoreDefaultEmitHeader(key, value)` — заголовок по умолчанию для всех эмиссий
+- `WithCoreDefaultEmitHeaders(headers)` — заголовки по умолчанию для всех эмиссий
+- `WithCoreDefaultEventHandlerMarshaller(m)` — маршаллер по умолчанию для всех обработчиков
+- `WithCoreHandlerMarshaller(m)` — маршаллер для конкретного обработчика
+- `WithCoreHandlerQueue(queue)` — очередь для конкретного обработчика (переопределяет значение по умолчанию)
+- `WithCoreEmitMarshaller(m)` — маршаллер для конкретной эмиссии (переопределяет значение по умолчанию)
+- `WithCoreEmitHeader(key, value)` — заголовок для конкретной эмиссии (объединяется со значениями по умолчанию)
+- `WithCoreEmitHeaders(headers)` — заголовки для конкретной эмиссии (объединяются со значениями по умолчанию)
 
+**JetStream Events Options:**
+- `WithJetStreamStream(stream)` — имя потока JetStream
+- `WithJetStreamDeliverGroup(group)` — группа доставки для консьюмеров
+- `WithJetStreamDefaultEmitMarshaller(m)` — маршаллер по умолчанию для всех эмиссий
+- `WithJetStreamDefaultEmitHeader(key, value)` — заголовок по умолчанию для всех эмиссий
+- `WithJetStreamDefaultEmitHeaders(headers)` — заголовки по умолчанию для всех эмиссий
+- `WithJetStreamDefaultEventHandlerMarshaller(m)` — маршаллер по умолчанию для всех обработчиков
+- `WithJetStreamHandlerMarshaller(m)` — маршаллер для конкретного обработчика
+- `WithJetStreamEmitMarshaller(m)` — маршаллер для конкретной эмиссии (переопределяет значение по умолчанию)
+- `WithJetStreamEmitHeader(key, value)` — заголовок для конкретной эмиссии (объединяется со значениями по умолчанию)
+
+### EventContext
+
+`EventContext` предоставляет:
+- `Event(&payload)` — десериализация сообщения
+- `Ack/Nak/Term/InProgress` — управление доставкой в JetStream (для JetStream событий)
+- `Headers()` — доступ к заголовкам сообщения
+- `Message()` — доступ к исходному сообщению
+
+**Примечание:** `DefaultHeaders` в `JetStreamEventHandlerOptions` в настоящее время определены, но не используются активно при обработке обработчиков. Они зарезервированы для будущей функциональности.
+
+### Типизированные обработчики событий
+
+Для типобезопасной обработки событий с использованием generics используйте типизированные хелперы:
+
+**Core Events:**
 ```go
-eventsSvc := events.NewNatsEvents(nc,
-    events.WithJetStreamContext(js),
-    events.WithTimeout(time.Second),
-    events.WithJetStream(true),
-    events.WithAutoAck(true),
-    events.WithDefaultHandlerOptions(
-        events.WithHandlerQueue("my-queue"),
-        events.WithHandlerJetStream(
-            events.WithJSEnabled(true),
-            events.WithJSAutoAck(true),
-            events.WithJSDurable("my-consumer"),
-        ),
-    ),
-    events.WithDefaultPublishOptions(
-        events.WithPublishMarshaller(customMarshaller),
-        events.WithPublishHeader("X-Source", "my-service"),
-    ),
-)
+events.AddTypedCoreJsonEventHandler(coreEvents, "user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
+    fmt.Printf("user created: %#v\n", payload)
+    return nil
+})
 
-// Добавить обработчик с JetStream опциями
-eventsSvc.AddEventHandler("entity.created", handler,
-    events.WithHandlerJetStream(
-        events.WithJSEnabled(true),
-        events.WithJSAutoAck(true),
-        events.WithJSDurable("entity-created-consumer"),
-        events.WithJSDeliverGroup("entity-events"),
-    ),
-)
-
-// Эмиссия события с опциями
-eventsSvc.Emit(ctx, "user.created", payload,
-    events.WithPublishHeader("X-Source", "my-service"),
-    events.WithPublishJetStreamOptions(nats.MsgId("msg-id")),
-)
+events.AddTypedCoreProtoEventHandler(coreEvents, "user.updated", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserUpdatedEvent) error {
+    fmt.Printf("user updated: %#v\n", payload)
+    return nil
+}, events.WithCoreHandlerQueue("user-queue"))
 ```
+
+**JetStream Events:**
+```go
+events.AddTypedJetStreamJsonEventHandler(jetStreamEvents, "entity.created", func(ctx events.EventContext[jetstream.Msg, any], payload EntityCreatedEvent) error {
+    fmt.Printf("entity created: %#v\n", payload)
+    return nil
+})
+
+events.AddTypedJetStreamEventHandlerWithMarshaller(jetStreamEvents, "entity.updated", func(ctx events.EventContext[jetstream.Msg, any], payload EntityUpdatedEvent) error {
+    fmt.Printf("entity updated: %#v\n", payload)
+    return nil
+}, customMarshaller, events.WithJetStreamHandlerMarshaller(customMarshaller))
+```
+
+Доступные типизированные хелперы:
+- `AddTypedCoreEventHandler` / `AddTypedJetStreamEventHandler` — базовые функции
+- `AddTypedCoreEventHandlerWithMarshaller` / `AddTypedJetStreamEventHandlerWithMarshaller` — с кастомным маршаллером
+- `AddTypedCoreJsonEventHandler` / `AddTypedJetStreamJsonEventHandler` — с JSON маршаллером
+- `AddTypedCoreProtoEventHandler` / `AddTypedJetStreamProtoEventHandler` — с Protobuf маршаллером
 
 ## Graceful Shutdown
 
@@ -184,7 +269,7 @@ func main() {
     nc, _ := nats.Connect(nats.DefaultURL)
     defer nc.Close()
 
-    eventService := events.NewNatsEvents(nc)
+    eventService := events.NewCoreEvents(nc)
     rpcService := rpc.NewNatsRPC(nc)
 
     // ... настройка обработчиков ...
@@ -233,9 +318,9 @@ func main() {
 
 Примеры с полной реализацией graceful shutdown можно найти в `examples/simple/main.go` и `examples/typed/main.go`.
 
-## Маршаллизаторы
+## маршаллеры
 
-Библиотека поставляет два готовых маршаллизатора:
+Библиотека поставляет два готовых маршаллера:
 
 - `marshaller.DefaultJsonMarshaller`
 - `marshaller.DefaultProtoMarshaller`
