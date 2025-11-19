@@ -32,9 +32,10 @@ func NewCoreEvents(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
 	handlerOptions := CoreEventHandlerOptions{}
 
 	return &coreNatsEventsImpl{
-		connection: nc,
-		router:     newEventRouter[*nats.Msg, nats.AckOpt, CoreEventHandlerOptions, MiddlewareFunc[*nats.Msg, nats.AckOpt]]("", handlerOptions),
-		options:    options,
+		connection:  nc,
+		router:      newEventRouter[*nats.Msg, nats.AckOpt, CoreEventHandlerOptions, MiddlewareFunc[*nats.Msg, nats.AckOpt]]("", handlerOptions),
+		options:     options,
+		subsTracker: subscriptions.NewTracker(),
 	}
 }
 
@@ -42,7 +43,7 @@ func NewCoreEvents(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
 func (e *coreNatsEventsImpl) Use(middlewares ...MiddlewareFunc[*nats.Msg, nats.AckOpt]) {
 	e.router.Use(middlewares...)
 }
-func (e *coreNatsEventsImpl) AddEventHandler(subject string, handler HandlerFunc[*nats.Msg, nats.AckOpt], opts ...func(CoreEventHandlerOptions)) {
+func (e *coreNatsEventsImpl) AddEventHandler(subject string, handler HandlerFunc[*nats.Msg, nats.AckOpt], opts ...func(*CoreEventHandlerOptions)) {
 	e.router.AddEventHandler(subject, handler, opts...)
 }
 func (e *coreNatsEventsImpl) Group(group string) EventRouter[*nats.Msg, nats.AckOpt, CoreEventHandlerOptions, MiddlewareFunc[*nats.Msg, nats.AckOpt]] {
@@ -134,9 +135,14 @@ func (e *coreNatsEventsImpl) wrapHandler(ctx context.Context, route router.Recor
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		// TODO: handle logic
+		eventCtx := newCoreContext(ctx, msg, route.Options.Marshaller)
+		err := route.Handler(eventCtx)
 
-		// eventCtx := newCoreEventContext(ctx, msg, route.options.Marshaller)
-		// return route.handler(eventCtx)
+		if err != nil {
+			eventCtx.Nak()
+			return
+		}
+
+		eventCtx.Ack()
 	}
 }

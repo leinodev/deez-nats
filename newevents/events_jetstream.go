@@ -35,7 +35,7 @@ func (s *jsSubImpl) Unsubscribe() error {
 }
 
 type jetStreamNatsEventsImpl struct {
-	router  *eventRouterImpl[jetstream.Msg, nats.AckOpt, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, nats.AckOpt]]
+	router  *eventRouterImpl[jetstream.Msg, any, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, any]]
 	js      jetstream.JetStream
 	options JetStreamEventsOptions
 
@@ -54,20 +54,21 @@ func NewJetStreamEvents(js jetstream.JetStream, opts ...JetStreamEventsOptionFun
 	handlerOptions := JetStreamEventHandlerOptions{}
 
 	return &jetStreamNatsEventsImpl{
-		js:      js,
-		options: options,
-		router:  newEventRouter[jetstream.Msg, nats.AckOpt, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, nats.AckOpt]]("", handlerOptions),
+		js:          js,
+		options:     options,
+		router:      newEventRouter[jetstream.Msg, any, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, any]]("", handlerOptions),
+		subsTracker: subscriptions.NewTracker(),
 	}
 }
 
 // Router inherited
-func (e *jetStreamNatsEventsImpl) Use(middlewares ...MiddlewareFunc[jetstream.Msg, nats.AckOpt]) {
+func (e *jetStreamNatsEventsImpl) Use(middlewares ...MiddlewareFunc[jetstream.Msg, any]) {
 	e.router.Use(middlewares...)
 }
-func (e *jetStreamNatsEventsImpl) AddEventHandler(subject string, handler HandlerFunc[jetstream.Msg, nats.AckOpt], opts ...func(JetStreamEventHandlerOptions)) {
+func (e *jetStreamNatsEventsImpl) AddEventHandler(subject string, handler HandlerFunc[jetstream.Msg, any], opts ...func(*JetStreamEventHandlerOptions)) {
 	e.router.AddEventHandler(subject, handler, opts...)
 }
-func (e *jetStreamNatsEventsImpl) Group(group string) EventRouter[jetstream.Msg, nats.AckOpt, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, nats.AckOpt]] {
+func (e *jetStreamNatsEventsImpl) Group(group string) EventRouter[jetstream.Msg, any, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, any]] {
 	return e.router.Group(group)
 }
 
@@ -166,15 +167,20 @@ func (e *jetStreamNatsEventsImpl) Shutdown(ctx context.Context) error {
 // internal methods
 func (e *jetStreamNatsEventsImpl) wrapHandler(
 	ctx context.Context,
-	route router.Record[HandlerFunc[jetstream.Msg, nats.AckOpt], MiddlewareFunc[jetstream.Msg, nats.AckOpt], JetStreamEventHandlerOptions],
+	route router.Record[HandlerFunc[jetstream.Msg, any], MiddlewareFunc[jetstream.Msg, any], JetStreamEventHandlerOptions],
 ) jetstream.MessageHandler {
 	return func(msg jetstream.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		// TODO: handle logic
+		eventCtx := newJetstreamContext(ctx, msg, route.Options.Marshaller)
+		err := route.Handler(eventCtx)
 
-		// eventCtx := newCoreEventContext(ctx, msg, route.options.Marshaller)
-		// return route.handler(eventCtx)
+		if err != nil {
+			eventCtx.Nak()
+			return
+		}
+
+		eventCtx.Ack()
 	}
 }

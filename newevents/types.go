@@ -31,6 +31,8 @@ type CoreEventEmitOptionFunc func(*CoreEventEmitOptions)
 // JetStream
 
 type JetStreamEventHandlerOptions struct {
+	Marshaller marshaller.PayloadMarshaller
+	Headers    nats.Header
 }
 type JetStreamEventEmitOptions struct {
 	Marshaller marshaller.PayloadMarshaller
@@ -41,7 +43,7 @@ type JetStreamEventsOptions struct {
 	DeliverGroup string
 }
 type JetStreamNatsEvents interface {
-	NatsEvents[jetstream.Msg, nats.AckOpt, JetStreamEventHandlerOptions, JetStreamEventEmitOptions]
+	NatsEvents[jetstream.Msg, any, JetStreamEventHandlerOptions, JetStreamEventEmitOptions]
 }
 type JetStreamEventsOptionFunc func(*JetStreamEventsOptions)
 type JetStreamEventHandlerOptionFunc func(*JetStreamEventHandlerOptions)
@@ -59,7 +61,7 @@ type NatsEvents[TMessage any, TAckOptFunc any, THandlerOption any, TEmitOption a
 
 type EventRouter[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlewareFunc any] interface {
 	Use(middlewares ...TMiddlewareFunc)
-	AddEventHandler(subject string, handler HandlerFunc[TMessage, TAckOptFunc], opts ...func(THandlerOption))
+	AddEventHandler(subject string, handler HandlerFunc[TMessage, TAckOptFunc], opts ...func(*THandlerOption))
 	Group(group string) EventRouter[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]
 }
 
