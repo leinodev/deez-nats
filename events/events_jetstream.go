@@ -6,33 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/provider"
+	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/router"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
-
-type jsSubImpl struct {
-	ctx jetstream.ConsumeContext
-}
-
-func newJsSub(ctx jetstream.ConsumeContext) provider.TransportSubscription {
-	return &jsSubImpl{
-		ctx: ctx,
-	}
-}
-
-func (s *jsSubImpl) Drain() error {
-	s.ctx.Drain()
-	return nil
-}
-
-func (s *jsSubImpl) Unsubscribe() error {
-	s.ctx.Stop()
-	return nil
-}
 
 type jetStreamNatsEventsImpl struct {
 	router  *eventRouterImpl[jetstream.Msg, any, JetStreamEventHandlerOptions, MiddlewareFunc[jetstream.Msg, any]]
@@ -44,14 +24,14 @@ type jetStreamNatsEventsImpl struct {
 }
 
 func NewJetStreamEvents(js jetstream.JetStream, opts ...JetStreamEventsOptionFunc) JetStreamNatsEvents {
-	// TODO: default options
 	options := JetStreamEventsOptions{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	// TODO: default handler options
-	handlerOptions := JetStreamEventHandlerOptions{}
+	handlerOptions := JetStreamEventHandlerOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+	}
 
 	return &jetStreamNatsEventsImpl{
 		js:          js,
@@ -99,7 +79,7 @@ func (e *jetStreamNatsEventsImpl) StartWithContext(ctx context.Context) error {
 			return fmt.Errorf("failed to consume %s: %w", route.Name, err)
 		}
 
-		e.subsTracker.Track(newJsSub(consumeCtx))
+		e.subsTracker.Track(subscriptions.NewJsSub(consumeCtx))
 	}
 
 	go func() {
@@ -116,8 +96,9 @@ func (e *jetStreamNatsEventsImpl) Emit(ctx context.Context, subject string, payl
 		return ErrEmptySubject
 	}
 
-	// TODO: default options
-	emitOptions := JetStreamEventEmitOptions{}
+	emitOptions := JetStreamEventEmitOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+	}
 	for _, opt := range opts {
 		opt(&emitOptions)
 	}
@@ -169,12 +150,14 @@ func (e *jetStreamNatsEventsImpl) wrapHandler(
 	ctx context.Context,
 	route router.Record[HandlerFunc[jetstream.Msg, any], MiddlewareFunc[jetstream.Msg, any], JetStreamEventHandlerOptions],
 ) jetstream.MessageHandler {
+	handler := middleware.Apply(route.Handler, route.Middlewares, true)
+
 	return func(msg jetstream.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		eventCtx := newJetstreamContext(ctx, msg, route.Options.Marshaller)
-		err := route.Handler(eventCtx)
+		eventCtx := newJetStreamContext(ctx, msg, route.Options.Marshaller)
+		err := handler(eventCtx)
 
 		if err != nil {
 			eventCtx.Nak()

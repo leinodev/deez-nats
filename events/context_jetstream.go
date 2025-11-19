@@ -15,7 +15,7 @@ type jetstreamContextImpl struct {
 	m   marshaller.PayloadMarshaller
 }
 
-func newJetstreamContext(parent context.Context, msg jetstream.Msg, m marshaller.PayloadMarshaller) EventContext[jetstream.Msg, any] {
+func newJetStreamContext(parent context.Context, msg jetstream.Msg, m marshaller.PayloadMarshaller) EventContext[jetstream.Msg, any] {
 	if parent == nil {
 		parent = context.Background()
 	}

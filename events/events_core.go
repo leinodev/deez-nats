@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/router"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
 	"github.com/leinodev/deez-nats/marshaller"
@@ -22,14 +23,14 @@ type coreNatsEventsImpl struct {
 }
 
 func NewCoreEvents(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
-	// TODO: default options
 	options := CoreEventsOptions{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	// TODO: default handler options
-	handlerOptions := CoreEventHandlerOptions{}
+	handlerOptions := CoreEventHandlerOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+	}
 
 	return &coreNatsEventsImpl{
 		connection:  nc,
@@ -70,7 +71,7 @@ func (e *coreNatsEventsImpl) StartWithContext(ctx context.Context) error {
 			return fmt.Errorf("failed to subscribe %s: %w", route.Name, err)
 		}
 
-		e.subsTracker.Track(sub)
+		e.subsTracker.Track(subscriptions.NewCoreSub(sub))
 	}
 
 	go func() {
@@ -87,8 +88,9 @@ func (e *coreNatsEventsImpl) Emit(ctx context.Context, subject string, payload a
 		return ErrEmptySubject
 	}
 
-	// TODO: default options
-	emitOptions := CoreEventEmitOptions{}
+	emitOptions := CoreEventEmitOptions{
+		Marshaller: marshaller.DefaultJsonMarshaller,
+	}
 	for _, opt := range opts {
 		opt(&emitOptions)
 	}
@@ -125,18 +127,20 @@ func (e *coreNatsEventsImpl) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for handlers finish: %w", context.DeadlineExceeded)
 	}
 
-	e.subsTracker.Unsubscribe() // Unsubscribe from all routes
+	e.subsTracker.Unsubscribe()
 	return nil
 }
 
 // internal methods
 func (e *coreNatsEventsImpl) wrapHandler(ctx context.Context, route router.Record[HandlerFunc[*nats.Msg, nats.AckOpt], MiddlewareFunc[*nats.Msg, nats.AckOpt], CoreEventHandlerOptions]) nats.MsgHandler {
+	handler := middleware.Apply(route.Handler, route.Middlewares, true)
+
 	return func(msg *nats.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
 		eventCtx := newCoreContext(ctx, msg, route.Options.Marshaller)
-		err := route.Handler(eventCtx)
+		err := handler(eventCtx)
 
 		if err != nil {
 			eventCtx.Nak()
