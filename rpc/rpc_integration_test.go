@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/testutil"
+	"github.com/leinodev/deez-nats/internal/utils"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
@@ -23,9 +23,9 @@ type addResponse struct {
 }
 
 func TestRPCIntegrationCallSuccess(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	method := fmt.Sprintf("integration.add.%d", time.Now().UnixNano())
 
 	rpcServer.AddRPCHandler(method, func(ctx RPCContext) error {
@@ -60,11 +60,11 @@ func TestRPCIntegrationCallSuccess(t *testing.T) {
 }
 
 func TestRPCIntegrationCallHandlerError(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	rpcSubject := fmt.Sprintf("integration.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	rpcServer.AddRPCHandler(rpcSubject, func(ctx RPCContext) error {
 		var req addRequest
 		if err := ctx.Request(&req); err != nil {
@@ -95,11 +95,11 @@ func TestRPCIntegrationCallHandlerError(t *testing.T) {
 }
 
 func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	method := fmt.Sprintf("integration.typed.add.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	})
@@ -128,11 +128,11 @@ func TestRPCIntegrationTypedCallSuccess(t *testing.T) {
 }
 
 func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	method := fmt.Sprintf("integration.typed.fail.%d", time.Now().UnixNano())
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	AddTypedRPCHandler(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{}, errors.New("typed handler failure")
 	})
@@ -159,13 +159,13 @@ func TestRPCIntegrationTypedCallHandlerError(t *testing.T) {
 }
 
 func TestRPCIntegrationTypedCallWithCustomMarshaller(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	method := fmt.Sprintf("integration.typed.marshaller.%d", time.Now().UnixNano())
 
 	recMarshaller := newRecordingMarshaller(nil)
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	AddTypedRPCHandlerWithMarshaller(rpcServer, method, func(ctx RPCContext, request addRequest) (addResponse, error) {
 		return addResponse{Sum: request.A + request.B}, nil
 	}, recMarshaller)
@@ -251,9 +251,9 @@ func (r *recordingMarshaller) counts() (int, int) {
 }
 
 func TestRPCIntegrationGracefulShutdown(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	method := fmt.Sprintf("integration.shutdown.%d", time.Now().UnixNano())
 
 	handlerStarted := make(chan struct{})
@@ -337,9 +337,9 @@ func TestRPCIntegrationGracefulShutdown(t *testing.T) {
 }
 
 func TestRPCIntegrationGracefulShutdownTimeout(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
-	rpcServer := NewNatsRPC(nc, WithBaseRoute("myservice"))
+	rpcServer := New(nc, WithBaseRoute("myservice"))
 	method := fmt.Sprintf("integration.shutdown.timeout.%d", time.Now().UnixNano())
 
 	handlerStarted := make(chan struct{})
@@ -391,7 +391,7 @@ func TestRPCIntegrationGracefulShutdownTimeout(t *testing.T) {
 }
 
 func TestRPCIntegrationQueueGroupLoadBalancing(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	method := fmt.Sprintf("integration.queuegroup.%d", time.Now().UnixNano())
 	queueGroup := "test-queue-group"
@@ -414,7 +414,7 @@ func TestRPCIntegrationQueueGroupLoadBalancing(t *testing.T) {
 		serverCancels[i] = serverCancel
 		startErrs[i] = make(chan error, 1)
 
-		rpcServer := NewNatsRPC(nc,
+		rpcServer := New(nc,
 			WithBaseRoute("myservice"),
 			WithQueueGroup(queueGroup),
 		)
@@ -440,8 +440,8 @@ func TestRPCIntegrationQueueGroupLoadBalancing(t *testing.T) {
 	waitForRPCSubscriptions(t, nc)
 	time.Sleep(100 * time.Millisecond)
 
-	clientNC := testutil.ConnectToNATS(t)
-	clientRPC := NewNatsRPC(clientNC)
+	clientNC := utils.ConnectToNATS(t)
+	clientRPC := New(clientNC)
 
 	var wg sync.WaitGroup
 	for i := range numRequests {

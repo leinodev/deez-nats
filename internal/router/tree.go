@@ -16,7 +16,7 @@ type Base[THandler any, TMiddleware any, TOptions any] struct {
 	childs      []*Base[THandler, TMiddleware, TOptions]
 }
 
-func NewBase[THandler any, TMiddleware any, TOptions any](group string, defaultOpts TOptions) *Base[THandler, TMiddleware, TOptions] {
+func NewTreeRouter[THandler any, TMiddleware any, TOptions any](group string, defaultOpts TOptions) *Base[THandler, TMiddleware, TOptions] {
 	return &Base[THandler, TMiddleware, TOptions]{
 		group:       group,
 		defaultOpts: defaultOpts,
@@ -41,7 +41,7 @@ func (r *Base[THandler, TMiddleware, TOptions]) Add(name string, handler THandle
 }
 
 func (r *Base[THandler, TMiddleware, TOptions]) Child(name string) *Base[THandler, TMiddleware, TOptions] {
-	child := NewBase[THandler, TMiddleware](name, r.defaultOpts)
+	child := NewTreeRouter[THandler, TMiddleware](name, r.defaultOpts)
 	r.childs = append(r.childs, child)
 	return child
 }

@@ -15,7 +15,7 @@ type rpcRouterImpl struct {
 
 func newRouter(groupName string, defaultOpts HandlerOptions) RPCRouter {
 	return &rpcRouterImpl{
-		base: router.NewBase[RpcHandleFunc, RpcMiddlewareFunc](groupName, defaultOpts),
+		base: router.NewTreeRouter[RpcHandleFunc, RpcMiddlewareFunc](groupName, defaultOpts),
 	}
 }
 

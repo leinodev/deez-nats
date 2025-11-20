@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/testutil"
+	"github.com/leinodev/deez-nats/internal/utils"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -19,7 +19,7 @@ type sampleEvent struct {
 }
 
 func TestEventsIntegrationEmitAndHandle(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	evts := NewCoreEvents(nc)
 
@@ -77,8 +77,8 @@ func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 }
 
 func TestEventsIntegrationJetStream(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
-	jsCtx := testutil.RequireJetStream(t, nc)
+	nc := utils.ConnectToNATS(t)
+	jsCtx := utils.RequireJetStream(t, nc)
 
 	js, err := jetstream.New(nc)
 	if err != nil {
@@ -171,7 +171,7 @@ func waitForSubscriptions(t *testing.T, nc *nats.Conn) {
 }
 
 func TestEventsIntegrationGracefulShutdown(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	evts := NewCoreEvents(nc)
 
@@ -268,7 +268,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 }
 
 func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
-	nc := testutil.ConnectToNATS(t)
+	nc := utils.ConnectToNATS(t)
 
 	evts := NewCoreEvents(nc)
 

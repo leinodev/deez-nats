@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
+	"github.com/leinodev/deez-nats/internal/utils"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
@@ -31,7 +31,7 @@ type natsRpcImpl struct {
 }
 
 // TODO: Add logger
-func NewNatsRPC(nc *nats.Conn, opts ...RPCOption) NatsRPC {
+func New(nc *nats.Conn, opts ...RPCOption) NatsRPC {
 	options := NewRPCOptions(opts...)
 
 	return &natsRpcImpl{
@@ -64,7 +64,6 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 		handler := r.wrapRPCHandler(
 			ctx,
 			route,
-			middleware.Apply(route.handler, route.middlewares, true),
 		)
 
 		if r.options.QueueGroup != "" {
@@ -163,7 +162,9 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 	return nil
 }
 
-func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo, handler RpcHandleFunc) nats.MsgHandler {
+func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo) nats.MsgHandler {
+	handler := utils.ApplyMiddlewares(info.handler, info.middlewares, true)
+
 	return func(msg *nats.Msg) {
 		if msg == nil {
 			return

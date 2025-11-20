@@ -32,26 +32,24 @@ func (m *Tracker) Track(s Subscription) {
 
 func (m *Tracker) Drain() {
 	m.mu.Lock()
-	subs := m.subs
-	m.subs = nil
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	for i, sub := range subs {
-		subs[i].Dirty = true
+	for i, sub := range m.subs {
+		m.subs[i].Dirty = true
 		_ = sub.Sub.Drain()
 	}
 }
 
 func (m *Tracker) Unsubscribe() {
 	m.mu.Lock()
-	subs := m.subs
-	m.subs = nil
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	for _, sub := range subs {
+	for idx, sub := range m.subs {
 		if !sub.Dirty {
 			continue
 		}
 		_ = sub.Sub.Unsubscribe()
+		// Remove from subs
+		m.subs = append(m.subs[:idx], m.subs[idx+1:]...)
 	}
 }

@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/router"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
+	"github.com/leinodev/deez-nats/internal/utils"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -153,14 +153,13 @@ func (e *jetStreamNatsEventsImpl) wrapHandler(
 	ctx context.Context,
 	route router.Record[HandlerFunc[jetstream.Msg, any], MiddlewareFunc[jetstream.Msg, any], JetStreamEventHandlerOptions],
 ) jetstream.MessageHandler {
-	handler := middleware.Apply(route.Handler, route.Middlewares, true)
-	handlerOptions := route.Options
+	handler := utils.ApplyMiddlewares(route.Handler, route.Middlewares, true)
 
 	return func(msg jetstream.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		eventCtx := newJetStreamContext(ctx, msg, handlerOptions.Marshaller)
+		eventCtx := newJetStreamContext(ctx, msg, route.Options.Marshaller)
 		err := handler(eventCtx)
 
 		if err != nil {

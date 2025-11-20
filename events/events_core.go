@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leinodev/deez-nats/internal/middleware"
 	"github.com/leinodev/deez-nats/internal/router"
 	"github.com/leinodev/deez-nats/internal/subscriptions"
+	"github.com/leinodev/deez-nats/internal/utils"
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
 )
@@ -141,14 +141,13 @@ func (e *coreNatsEventsImpl) Shutdown(ctx context.Context) error {
 
 // internal methods
 func (e *coreNatsEventsImpl) wrapHandler(ctx context.Context, route router.Record[HandlerFunc[*nats.Msg, nats.AckOpt], MiddlewareFunc[*nats.Msg, nats.AckOpt], CoreEventHandlerOptions]) nats.MsgHandler {
-	handler := middleware.Apply(route.Handler, route.Middlewares, true)
-	handlerOptions := route.Options
+	handler := utils.ApplyMiddlewares(route.Handler, route.Middlewares, true)
 
 	return func(msg *nats.Msg) {
 		e.handlersWatch.Add(1)
 		defer e.handlersWatch.Done()
 
-		eventCtx := newCoreContext(ctx, msg, handlerOptions.Marshaller)
+		eventCtx := newCoreContext(ctx, msg, route.Options.Marshaller)
 		err := handler(eventCtx)
 
 		if err != nil {

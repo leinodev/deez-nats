@@ -10,7 +10,7 @@ type eventRouterImpl[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlew
 
 func newEventRouter[TMessage any, TAckOptFunc any, THandlerOption any, TMiddlewareFunc any](group string, defaultOpts THandlerOption) *eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc] {
 	return &eventRouterImpl[TMessage, TAckOptFunc, THandlerOption, TMiddlewareFunc]{
-		base: router.NewBase[HandlerFunc[TMessage, TAckOptFunc], TMiddlewareFunc](group, defaultOpts),
+		base: router.NewTreeRouter[HandlerFunc[TMessage, TAckOptFunc], TMiddlewareFunc](group, defaultOpts),
 	}
 }
 
