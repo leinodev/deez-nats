@@ -1,5 +1,7 @@
 # deez-nats
 
+<img src="./logo.png" alt="logo" width="250"/>
+
 _[Русская версия документации](README.ru.md)_
 
 Utilities for building RPC and event-driven applications on top of [NATS](https://nats.io) in Go. The library ships with a unified router for RPC methods and events, middleware support, typed helpers, and several marshallers (JSON and Protobuf) to speed up onboarding and simplify long-term maintenance.
