@@ -1,4 +1,4 @@
-package events
+package natsevents
 
 import (
 	"github.com/leinodev/deez-nats/marshaller"
