@@ -5,14 +5,14 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/leinodev/deez-nats/events"
-	"github.com/leinodev/deez-nats/rpc"
+	"github.com/leinodev/deez-nats/natsevents"
+	"github.com/leinodev/deez-nats/natsrpc"
 )
 
-func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
-	service := rpc.NewNatsRPC(nc)
+func NewRpcRouter(nc *nats.Conn) natsrpc.NatsRPC {
+	service := natsrpc.New(nc)
 
-	rpc.AddTypedJsonRPCHandler(service, "user.get", func(ctx rpc.RPCContext, request GetUserRequest) (GetUserResponse, error) {
+	natsrpc.AddTypedJsonRPCHandler(service, "user.get", func(ctx natsrpc.RPCContext, request GetUserRequest) (GetUserResponse, error) {
 		if request.ID == "" {
 			return GetUserResponse{}, fmt.Errorf("empty id")
 		}
@@ -25,7 +25,7 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 		}, nil
 	})
 
-	rpc.AddTypedJsonRPCHandler(service, "user.update", func(ctx rpc.RPCContext, request UpdateUserRequest) (UpdateUserResponse, error) {
+	natsrpc.AddTypedJsonRPCHandler(service, "user.update", func(ctx natsrpc.RPCContext, request UpdateUserRequest) (UpdateUserResponse, error) {
 		if request.ID == "" {
 			return UpdateUserResponse{}, fmt.Errorf("empty id")
 		}
@@ -40,17 +40,17 @@ func NewRpcRouter(nc *nats.Conn) rpc.NatsRPC {
 	return service
 }
 
-func NewEventRouter(nc *nats.Conn) events.CoreNatsEvents {
-	service := events.NewCoreEvents(nc,
-		events.WithCoreQueueGroup("user-queue"),
+func NewEventRouter(nc *nats.Conn) natsevents.CoreNatsEvents {
+	service := natsevents.New(nc,
+		natsevents.WithCoreQueueGroup("user-queue"),
 	)
 
-	events.AddTypedCoreJsonEventHandler(service, "user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
+	natsevents.AddTypedCoreJsonEventHandler(service, "user.created", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
 		fmt.Printf("user created: %#v\n", payload)
 		return nil
 	})
 
-	events.AddTypedCoreJsonEventHandler(service, "user.renamed", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserRenamedEvent) error {
+	natsevents.AddTypedCoreJsonEventHandler(service, "user.renamed", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt], payload UserRenamedEvent) error {
 		fmt.Printf("user renamed: %#v\n", payload)
 		return nil
 	})

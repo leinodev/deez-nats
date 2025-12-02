@@ -21,7 +21,7 @@ type sampleEvent struct {
 func TestEventsIntegrationEmitAndHandle(t *testing.T) {
 	nc := utils.ConnectToNATS(t)
 
-	evts := NewCoreEvents(nc)
+	evts := New(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.basic.%d", time.Now().UnixNano())
@@ -99,7 +99,7 @@ func TestEventsIntegrationJetStream(t *testing.T) {
 		_ = jsCtx.DeleteStream(streamName)
 	})
 
-	evts := NewJetStreamEvents(js, func(opts *JetStreamEventsOptions) {
+	evts := NewJetStream(js, func(opts *JetStreamEventsOptions) {
 		opts.Stream = streamName
 		opts.DeliverGroup = "test-group"
 	})
@@ -173,7 +173,7 @@ func waitForSubscriptions(t *testing.T, nc *nats.Conn) {
 func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 	nc := utils.ConnectToNATS(t)
 
-	evts := NewCoreEvents(nc)
+	evts := New(nc)
 
 	received := make(chan sampleEvent, 1)
 	subject := fmt.Sprintf("integration.shutdown.%d", time.Now().UnixNano())
@@ -270,7 +270,7 @@ func TestEventsIntegrationGracefulShutdown(t *testing.T) {
 func TestEventsIntegrationGracefulShutdownTimeout(t *testing.T) {
 	nc := utils.ConnectToNATS(t)
 
-	evts := NewCoreEvents(nc)
+	evts := New(nc)
 
 	subject := fmt.Sprintf("integration.shutdown.timeout.%d", time.Now().UnixNano())
 

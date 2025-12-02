@@ -23,7 +23,7 @@ type jetStreamNatsEventsImpl struct {
 	subsTracker   *subscriptions.Tracker
 }
 
-func NewJetStreamEvents(js jetstream.JetStream, opts ...JetStreamEventsOptionFunc) JetStreamNatsEvents {
+func NewJetStream(js jetstream.JetStream, opts ...JetStreamEventsOptionFunc) JetStreamNatsEvents {
 	options := JetStreamEventsOptions{
 		DefaultEmitMarshaller:         marshaller.DefaultJsonMarshaller,
 		DefaultEventHandlerMarshaller: marshaller.DefaultJsonMarshaller,

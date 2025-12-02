@@ -11,8 +11,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/leinodev/deez-nats/events"
-	"github.com/leinodev/deez-nats/rpc"
+	"github.com/leinodev/deez-nats/natsevents"
+	"github.com/leinodev/deez-nats/natsrpc"
 )
 
 func main() {
@@ -72,7 +72,7 @@ func main() {
 	log.Println("Graceful shutdown completed")
 }
 
-func emitExamples(ctx context.Context, service events.CoreNatsEvents) {
+func emitExamples(ctx context.Context, service natsevents.CoreNatsEvents) {
 	if err := service.Emit(ctx, "user.created", UserCreatedEvent{ID: "42", Name: "Typed Example"}); err != nil {
 		log.Printf("emit user.created: %v", err)
 	}
@@ -82,7 +82,7 @@ func emitExamples(ctx context.Context, service events.CoreNatsEvents) {
 	}
 }
 
-func callExamples(ctx context.Context, service rpc.NatsRPC) {
+func callExamples(ctx context.Context, service natsrpc.NatsRPC) {
 	var getResp GetUserResponse
 	if err := service.CallRPC(ctx, "user.get", GetUserRequest{ID: "42"}, &getResp); err != nil {
 		log.Printf("rpc call user.get: %v", err)

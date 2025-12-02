@@ -11,7 +11,7 @@ Utilities for building RPC and event-driven applications on top of [NATS](https:
 - **Unified router** with grouping (`Group`) and middleware inheritance for both RPC and events.
 - **RPC handling** with automatic ack/nak management and a convenient `RPCContext` for reading requests, sending responses, and working with headers.
 - **Event handlers with JetStream**: queue / pull consumers, auto-ack, durable configuration, and subject transforms.
-- **Typed helpers** for RPC (`rpc.AddTyped…`) and events (`events.AddTypedCore…` / `events.AddTypedJetStream…`) with generics support and pluggable marshallers.
+- **Typed helpers** for RPC (`natsrpc.AddTyped…`) and events (`natsevents.AddTypedCore…` / `natsevents.AddTypedJetStream…`) with generics support and pluggable marshallers.
 - **Flexible marshallers**: built-in JSON and Protobuf implementations, plus the option to provide your own.
 - **Examples** for a quick start: from a simple scenario to a fully typed pipeline.
 
@@ -29,10 +29,10 @@ Requires Go 1.21+ (the module is built with `go 1.25`).
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-eventsSvc := events.NewNatsEvents(nc)
-rpcSvc := rpc.NewNatsRPC(nc)
+eventsSvc := natsevents.New(nc)
+rpcSvc := natsrpc.New(nc)
 
-rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
+rpcSvc.AddRPCHandler("user.ping", func(ctx natsrpc.RPCContext) error {
     var req PingRequest
     if err := ctx.Request(&req); err != nil {
         return err
@@ -40,7 +40,7 @@ rpcSvc.AddRPCHandler("user.ping", func(ctx rpc.RPCContext) error {
     return ctx.Ok(PingResponse{Message: "pong"})
 })
 
-eventsSvc.AddEventHandler("user.created", func(ctx events.EventContext) error {
+eventsSvc.AddEventHandler("user.created", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt]) error {
     var payload UserCreatedEvent
     if err := ctx.Event(&payload); err != nil {
         return err
@@ -62,33 +62,33 @@ _ = rpcSvc.CallRPC(ctx, "user.ping", PingRequest{ID: "42"}, &resp)
 
 ## RPC
 
-- `rpc.NewNatsRPC` creates a service with the default JSON marshaller.
+- `natsrpc.New` creates a service with the default JSON marshaller.
 - `AddRPCHandler` builds a hierarchical route tree; methods can be grouped (`Service.Group("user")`).
 - `RPCContext` offers:
   - `Request(&reqStruct)` — request deserialization;
   - `Ok(response)` — sending a successful response;
   - `Headers()` and `RequestHeaders()` — working with headers.
 - `CallRPC` wraps a request with NATS timeout handling and response deserialization.
-- For generics, use `rpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler`, or `AddTypedRPCHandler` with your custom marshaller.
-- Use `rpc.WithHandlerMiddlewares(...)` to add middlewares to specific handlers.
+- For generics, use `natsrpc.AddTypedJsonRPCHandler`, `AddTypedProtoRPCHandler`, or `AddTypedRPCHandler` with your custom marshaller.
+- Use `natsrpc.WithHandlerMiddlewares(...)` to add middlewares to specific handlers.
 
 ### RPC Options
 
 Use functional options to configure RPC service:
 
 ```go
-rpcSvc := rpc.NewNatsRPC(nc,
-    rpc.WithBaseRoute("myservice"),
-    rpc.WithDefaultHandlerMarshaller(customMarshaller),
-    rpc.WithDefaultCallOptions(
-        rpc.WithCallHeader("X-Service", "my-service"),
+rpcSvc := natsrpc.New(nc,
+    natsrpc.WithBaseRoute("myservice"),
+    natsrpc.WithDefaultHandlerMarshaller(customMarshaller),
+    natsrpc.WithDefaultCallOptions(
+        natsrpc.WithCallHeader("X-Service", "my-service"),
     ),
 )
 
 // Add handler with middlewares
 rpcSvc.AddRPCHandler("user.get", handler,
-    rpc.WithHandlerMarshaller(customMarshaller),
-    rpc.WithHandlerMiddlewares(
+    natsrpc.WithHandlerMarshaller(customMarshaller),
+    natsrpc.WithHandlerMiddlewares(
         authMiddleware,
         loggingMiddleware,
     ),
@@ -96,8 +96,8 @@ rpcSvc.AddRPCHandler("user.get", handler,
 
 // Call RPC with options
 rpcSvc.CallRPC(ctx, "user.ping", request, &response,
-    rpc.WithCallHeader("X-Request-ID", "123"),
-    rpc.WithCallMarshaller(customMarshaller),
+    natsrpc.WithCallHeader("X-Request-ID", "123"),
+    natsrpc.WithCallMarshaller(customMarshaller),
 )
 ```
 
@@ -105,8 +105,8 @@ rpcSvc.CallRPC(ctx, "user.ping", request, &response,
 
 The library provides two event implementations:
 
-- **`events.NewCoreEvents`** — standard NATS subscriptions with queue groups
-- **`events.NewJetStreamEvents`** — JetStream-based events with consumer configuration
+- **`natsevents.New`** — standard NATS subscriptions with queue groups
+- **`natsevents.NewJetStream`** — JetStream-based events with consumer configuration
 
 ### Core Events
 
@@ -114,21 +114,21 @@ The library provides two event implementations:
 nc, _ := nats.Connect(nats.DefaultURL)
 defer nc.Close()
 
-coreEvents := events.NewCoreEvents(nc,
-    events.WithCoreQueueGroup("my-queue-group"),
-    events.WithCoreDefaultEmitMarshaller(customMarshaller),
-    events.WithCoreDefaultEmitHeader("X-Service", "my-service"),
-    events.WithCoreDefaultEventHandlerMarshaller(customMarshaller),
+coreEvents := natsevents.New(nc,
+    natsevents.WithCoreQueueGroup("my-queue-group"),
+    natsevents.WithCoreDefaultEmitMarshaller(customMarshaller),
+    natsevents.WithCoreDefaultEmitHeader("X-Service", "my-service"),
+    natsevents.WithCoreDefaultEventHandlerMarshaller(customMarshaller),
 )
 
-coreEvents.AddEventHandler("user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt]) error {
+coreEvents.AddEventHandler("user.created", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt]) error {
     var payload UserCreatedEvent
     if err := ctx.Event(&payload); err != nil {
         return err
     }
     fmt.Printf("created: %#v\n", payload)
     return nil
-}, events.WithCoreHandlerQueue("handler-queue"))
+}, natsevents.WithCoreHandlerQueue("handler-queue"))
 
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
@@ -136,7 +136,7 @@ defer cancel()
 go coreEvents.StartWithContext(ctx)
 
 _ = coreEvents.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"},
-    events.WithCoreEmitHeader("X-Request-ID", "123"),
+    natsevents.WithCoreEmitHeader("X-Request-ID", "123"),
 )
 ```
 
@@ -145,16 +145,16 @@ _ = coreEvents.Emit(ctx, "user.created", UserCreatedEvent{ID: "42"},
 ```go
 js, _ := jetstream.New(nc)
 
-jetStreamEvents := events.NewJetStreamEvents(js,
-    events.WithJetStreamStream("EVENTS"),
-    events.WithJetStreamDeliverGroup("events-group"),
-    events.WithJetStreamDefaultEmitMarshaller(customMarshaller),
-    events.WithJetStreamDefaultEmitHeader("X-Service", "my-service"),
-    events.WithJetStreamDefaultEventHandlerMarshaller(customMarshaller),
+jetStreamEvents := natsevents.NewJetStream(js,
+    natsevents.WithJetStreamStream("EVENTS"),
+    natsevents.WithJetStreamDeliverGroup("events-group"),
+    natsevents.WithJetStreamDefaultEmitMarshaller(customMarshaller),
+    natsevents.WithJetStreamDefaultEmitHeader("X-Service", "my-service"),
+    natsevents.WithJetStreamDefaultEventHandlerMarshaller(customMarshaller),
 )
 
 jetStreamEvents.AddEventHandler("entity.created", handler,
-    events.WithJetStreamHandlerMarshaller(customMarshaller),
+    natsevents.WithJetStreamHandlerMarshaller(customMarshaller),
 )
 
 ctx, cancel := context.WithCancel(context.Background())
@@ -163,8 +163,8 @@ defer cancel()
 go jetStreamEvents.StartWithContext(ctx)
 
 _ = jetStreamEvents.Emit(ctx, "entity.created", payload,
-    events.WithJetStreamEmitMarshaller(customMarshaller),
-    events.WithJetStreamEmitHeader("X-Request-ID", "123"),
+    natsevents.WithJetStreamEmitMarshaller(customMarshaller),
+    natsevents.WithJetStreamEmitHeader("X-Request-ID", "123"),
 )
 ```
 
@@ -209,28 +209,28 @@ For type-safe event handling with generics, use typed helpers:
 
 **Core Events:**
 ```go
-events.AddTypedCoreJsonEventHandler(coreEvents, "user.created", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
+natsevents.AddTypedCoreJsonEventHandler(coreEvents, "user.created", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt], payload UserCreatedEvent) error {
     fmt.Printf("user created: %#v\n", payload)
     return nil
 })
 
-events.AddTypedCoreProtoEventHandler(coreEvents, "user.updated", func(ctx events.EventContext[*nats.Msg, nats.AckOpt], payload UserUpdatedEvent) error {
+natsevents.AddTypedCoreProtoEventHandler(coreEvents, "user.updated", func(ctx natsevents.EventContext[*nats.Msg, nats.AckOpt], payload UserUpdatedEvent) error {
     fmt.Printf("user updated: %#v\n", payload)
     return nil
-}, events.WithCoreHandlerQueue("user-queue"))
+}, natsevents.WithCoreHandlerQueue("user-queue"))
 ```
 
 **JetStream Events:**
 ```go
-events.AddTypedJetStreamJsonEventHandler(jetStreamEvents, "entity.created", func(ctx events.EventContext[jetstream.Msg, any], payload EntityCreatedEvent) error {
+natsevents.AddTypedJetStreamJsonEventHandler(jetStreamEvents, "entity.created", func(ctx natsevents.EventContext[jetstream.Msg, any], payload EntityCreatedEvent) error {
     fmt.Printf("entity created: %#v\n", payload)
     return nil
 })
 
-events.AddTypedJetStreamEventHandlerWithMarshaller(jetStreamEvents, "entity.updated", func(ctx events.EventContext[jetstream.Msg, any], payload EntityUpdatedEvent) error {
+natsevents.AddTypedJetStreamEventHandlerWithMarshaller(jetStreamEvents, "entity.updated", func(ctx natsevents.EventContext[jetstream.Msg, any], payload EntityUpdatedEvent) error {
     fmt.Printf("entity updated: %#v\n", payload)
     return nil
-}, customMarshaller, events.WithJetStreamHandlerMarshaller(customMarshaller))
+}, customMarshaller, natsevents.WithJetStreamHandlerMarshaller(customMarshaller))
 ```
 
 Available typed helpers:
@@ -245,7 +245,7 @@ The library supports graceful shutdown for both RPC and event services. This all
 
 ### Usage
 
-Both services (`rpc.NatsRPC` and `events.NatsEvents`) implement the `Shutdown(ctx context.Context) error` method, which:
+Both services (`natsrpc.NatsRPC` and `natsevents.CoreNatsEvents` / `natsevents.JetStreamNatsEvents`) implement the `Shutdown(ctx context.Context) error` method, which:
 
 1. **Stops accepting new messages** — subscriptions are drained, new requests and events are no longer accepted.
 2. **Waits for active handlers to finish** — all running handlers are given a chance to complete their work.
@@ -265,16 +265,16 @@ import (
     "time"
 
     "github.com/nats-io/nats.go"
-    "github.com/leinodev/deez-nats/events"
-    "github.com/leinodev/deez-nats/rpc"
+    "github.com/leinodev/deez-nats/natsevents"
+    "github.com/leinodev/deez-nats/natsrpc"
 )
 
 func main() {
     nc, _ := nats.Connect(nats.DefaultURL)
     defer nc.Close()
 
-    eventService := events.NewNatsEvents(nc)
-    rpcService := rpc.NewNatsRPC(nc)
+    eventService := natsevents.New(nc)
+    rpcService := natsrpc.New(nc)
 
     // ... configure handlers ...
 
@@ -320,7 +320,7 @@ func main() {
 - **Order**: First cancel the context (`cancel()`), then call `Shutdown()` — this ensures that new messages won't be accepted.
 - **Error handling**: If `Shutdown()` returns an error (e.g., `context.DeadlineExceeded`), it means not all handlers finished within the allotted time. In this case, you can decide to force termination.
 
-Full graceful shutdown implementations can be found in `examples/simple/main.go` and `examples/typed/main.go`.
+Full graceful shutdown implementation can be found in `examples/typed/main.go`.
 
 ## Marshallers
 
@@ -333,19 +333,19 @@ Both implement the `marshaller.PayloadMarshaller` interface. You can replace the
 
 ## Examples
 
-- `examples/simple` — a basic scenario with JSON handlers that demonstrates RPC, events, and JetStream:
-
-```42:68:examples/simple/router.go
-// ... existing code ...
-```
-
 - `examples/typed` — typed RPC and event handlers with generics for JSON payloads:
 
 ```12:38:examples/typed/router.go
 // ... existing code ...
 ```
 
-Run the examples directly (`go run ./examples/simple`, `go run ./examples/typed`) after spinning up a local NATS (`docker-compose up nats` or `nats-server`).
+- `examples/nrpc` — RPC example with Protobuf marshaller:
+
+```25:45:examples/nrpc/main.go
+// ... existing code ...
+```
+
+Run the examples directly (`go run ./examples/typed`, `go run ./examples/nrpc`) after spinning up a local NATS (`docker-compose up nats` or `nats-server`).
 
 ## Local Development
 

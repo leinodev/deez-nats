@@ -11,11 +11,12 @@ import (
 )
 
 func main() {
-	nats, err := nats.Connect(nats.DefaultURL)
+	nc, err := nats.Connect(nats.DefaultURL)
 	if err != nil {
 		panic(err)
 	}
-	nrpc := natsrpc.New(nats, natsrpc.WithBaseRoute("myservice"))
+	defer nc.Close()
+	nrpc := natsrpc.New(nc, natsrpc.WithBaseRoute("myservice"))
 
 	server(nrpc)
 
@@ -23,6 +24,9 @@ func main() {
 }
 
 func server(nrpc natsrpc.NatsRPC) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Register some method
 	nrpc.AddRPCHandler("test.somemethod", func(c natsrpc.RPCContext) error {
 		var r protocol.HelloRequest
@@ -38,13 +42,14 @@ func server(nrpc natsrpc.NatsRPC) {
 			},
 		})
 	})
-	err := nrpc.StartWithContext(context.Background())
+	err := nrpc.StartWithContext(ctx)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func client(nrpc natsrpc.NatsRPC) {
+	ctx := context.Background()
 	var resp protocol.HelloResponse
 
 	roundtripTimeNsAvg := float64(0)
@@ -52,7 +57,7 @@ func client(nrpc natsrpc.NatsRPC) {
 
 	for i := range 100 {
 		sentTime := time.Now().UnixNano()
-		err := nrpc.CallRPC(context.Background(), "myservice.test.somemethod", &protocol.HelloRequest{
+		err := nrpc.CallRPC(ctx, "myservice.test.somemethod", &protocol.HelloRequest{
 			SentTime: sentTime,
 			Request: &protocol.SomeStruct{
 				AnotherNumber: 321,

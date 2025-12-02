@@ -22,7 +22,7 @@ type coreNatsEventsImpl struct {
 	subsTracker   *subscriptions.Tracker
 }
 
-func NewCoreEvents(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
+func New(nc *nats.Conn, opts ...CoreEventsOptionFunc) CoreNatsEvents {
 	options := CoreEventsOptions{
 		DefaultEmitMarshaller:         marshaller.DefaultJsonMarshaller,
 		DefaultEventHandlerMarshaller: marshaller.DefaultJsonMarshaller,
