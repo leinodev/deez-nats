@@ -45,7 +45,7 @@ jobs:
 
       - name: Тесты
         env:
-          NATS_URL: nats://localhost:4222
+          NATS_URL: nats://127.0.0.1:4222
         run: go test ./...
 
       - name: stop jetstream
