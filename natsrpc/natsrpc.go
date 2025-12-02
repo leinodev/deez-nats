@@ -80,7 +80,7 @@ func (r *natsRpcImpl) StartWithContext(ctx context.Context) error {
 		}
 
 		if err != nil {
-			r.Shutdown(ctx)
+			_ = r.Shutdown(ctx)
 			return fmt.Errorf("failed to subscribe %s: %w", route.method, err)
 		}
 

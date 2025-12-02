@@ -74,7 +74,7 @@ func (e *coreNatsEventsImpl) StartWithContext(ctx context.Context) error {
 		}
 
 		if err != nil {
-			e.Shutdown(ctx)
+			_ = e.Shutdown(ctx)
 
 			return fmt.Errorf("failed to subscribe %s: %w", route.Name, err)
 		}
@@ -151,10 +151,10 @@ func (e *coreNatsEventsImpl) wrapHandler(ctx context.Context, route router.Recor
 		err := handler(eventCtx)
 
 		if err != nil {
-			eventCtx.Nak()
+			_ = eventCtx.Nak()
 			return
 		}
 
-		eventCtx.Ack()
+		_ = eventCtx.Ack()
 	}
 }

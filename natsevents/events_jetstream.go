@@ -70,14 +70,14 @@ func (e *jetStreamNatsEventsImpl) StartWithContext(ctx context.Context) error {
 
 		sub, err = e.js.CreateOrUpdateConsumer(ctx, e.options.Stream, consumerConfig)
 		if err != nil {
-			e.Shutdown(ctx)
+			_ = e.Shutdown(ctx)
 
 			return fmt.Errorf("failed to subscribe %s: %w", route.Name, err)
 		}
 
 		consumeCtx, err := sub.Consume(handler)
 		if err != nil {
-			e.Shutdown(ctx)
+			_ = e.Shutdown(ctx)
 
 			return fmt.Errorf("failed to consume %s: %w", route.Name, err)
 		}
@@ -163,10 +163,10 @@ func (e *jetStreamNatsEventsImpl) wrapHandler(
 		err := handler(eventCtx)
 
 		if err != nil {
-			eventCtx.Nak()
+			_ = eventCtx.Nak()
 			return
 		}
 
-		eventCtx.Ack()
+		_ = eventCtx.Ack()
 	}
 }
