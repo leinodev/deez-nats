@@ -34,10 +34,17 @@ func (*protoPayloadMarshaller) Marshall(v *MarshalObject) ([]byte, error) {
 		return nil, ErrProtoInvalidMessage
 	}
 
-	data, err := proto.Marshal(&ProtobufWrap{
-		Data:  dataAny,
-		Error: v.Error,
-	})
+	wrap := &ProtobufWrap{
+		Data: dataAny,
+	}
+	if v.Err != nil {
+		wrap.Err = &ProtobufErrorWrap{
+			Text: v.Err.Text,
+			Code: int32(v.Err.Code),
+		}
+	}
+
+	data, err := proto.Marshal(wrap)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +75,12 @@ func (*protoPayloadMarshaller) Unmarshall(data []byte, v *MarshalObject) error {
 		return ErrProtoInvalidMessage
 	}
 
-	v.Error = wrap.Error
+	if wrap.Err != nil {
+		v.Err = &Error{
+			Text: wrap.Err.Text,
+			Code: int(wrap.Err.Code),
+		}
+	}
+
 	return nil
 }

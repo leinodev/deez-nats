@@ -22,17 +22,69 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ProtobufErrorWrap struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	Code          int32                  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProtobufErrorWrap) Reset() {
+	*x = ProtobufErrorWrap{}
+	mi := &file_marshaller_protocol_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProtobufErrorWrap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProtobufErrorWrap) ProtoMessage() {}
+
+func (x *ProtobufErrorWrap) ProtoReflect() protoreflect.Message {
+	mi := &file_marshaller_protocol_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProtobufErrorWrap.ProtoReflect.Descriptor instead.
+func (*ProtobufErrorWrap) Descriptor() ([]byte, []int) {
+	return file_marshaller_protocol_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ProtobufErrorWrap) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *ProtobufErrorWrap) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
 type ProtobufWrap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Data          *anypb.Any             `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Err           *ProtobufErrorWrap     `protobuf:"bytes,2,opt,name=err,proto3" json:"err,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProtobufWrap) Reset() {
 	*x = ProtobufWrap{}
-	mi := &file_marshaller_protocol_proto_msgTypes[0]
+	mi := &file_marshaller_protocol_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +96,7 @@ func (x *ProtobufWrap) String() string {
 func (*ProtobufWrap) ProtoMessage() {}
 
 func (x *ProtobufWrap) ProtoReflect() protoreflect.Message {
-	mi := &file_marshaller_protocol_proto_msgTypes[0]
+	mi := &file_marshaller_protocol_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +109,7 @@ func (x *ProtobufWrap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtobufWrap.ProtoReflect.Descriptor instead.
 func (*ProtobufWrap) Descriptor() ([]byte, []int) {
-	return file_marshaller_protocol_proto_rawDescGZIP(), []int{0}
+	return file_marshaller_protocol_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ProtobufWrap) GetData() *anypb.Any {
@@ -67,11 +119,11 @@ func (x *ProtobufWrap) GetData() *anypb.Any {
 	return nil
 }
 
-func (x *ProtobufWrap) GetError() string {
+func (x *ProtobufWrap) GetErr() *ProtobufErrorWrap {
 	if x != nil {
-		return x.Error
+		return x.Err
 	}
-	return ""
+	return nil
 }
 
 type ProtobufTestMessage struct {
@@ -84,7 +136,7 @@ type ProtobufTestMessage struct {
 
 func (x *ProtobufTestMessage) Reset() {
 	*x = ProtobufTestMessage{}
-	mi := &file_marshaller_protocol_proto_msgTypes[1]
+	mi := &file_marshaller_protocol_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -96,7 +148,7 @@ func (x *ProtobufTestMessage) String() string {
 func (*ProtobufTestMessage) ProtoMessage() {}
 
 func (x *ProtobufTestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_marshaller_protocol_proto_msgTypes[1]
+	mi := &file_marshaller_protocol_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -109,7 +161,7 @@ func (x *ProtobufTestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtobufTestMessage.ProtoReflect.Descriptor instead.
 func (*ProtobufTestMessage) Descriptor() ([]byte, []int) {
-	return file_marshaller_protocol_proto_rawDescGZIP(), []int{1}
+	return file_marshaller_protocol_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ProtobufTestMessage) GetName() string {
@@ -131,10 +183,13 @@ var File_marshaller_protocol_proto protoreflect.FileDescriptor
 const file_marshaller_protocol_proto_rawDesc = "" +
 	"\n" +
 	"\x19marshaller/protocol.proto\x12\n" +
-	"marshaller\x1a\x19google/protobuf/any.proto\"N\n" +
+	"marshaller\x1a\x19google/protobuf/any.proto\";\n" +
+	"\x11ProtobufErrorWrap\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\x05R\x04code\"i\n" +
 	"\fProtobufWrap\x12(\n" +
-	"\x04data\x18\x01 \x01(\v2\x14.google.protobuf.AnyR\x04data\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xa1\x01\n" +
+	"\x04data\x18\x01 \x01(\v2\x14.google.protobuf.AnyR\x04data\x12/\n" +
+	"\x03err\x18\x02 \x01(\v2\x1d.marshaller.ProtobufErrorWrapR\x03err\"\xa1\x01\n" +
 	"\x13ProtobufTestMessage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\x04data\x18\x02 \x03(\v2).marshaller.ProtobufTestMessage.DataEntryR\x04data\x1a7\n" +
@@ -154,21 +209,23 @@ func file_marshaller_protocol_proto_rawDescGZIP() []byte {
 	return file_marshaller_protocol_proto_rawDescData
 }
 
-var file_marshaller_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_marshaller_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_marshaller_protocol_proto_goTypes = []any{
-	(*ProtobufWrap)(nil),        // 0: marshaller.ProtobufWrap
-	(*ProtobufTestMessage)(nil), // 1: marshaller.ProtobufTestMessage
-	nil,                         // 2: marshaller.ProtobufTestMessage.DataEntry
-	(*anypb.Any)(nil),           // 3: google.protobuf.Any
+	(*ProtobufErrorWrap)(nil),   // 0: marshaller.ProtobufErrorWrap
+	(*ProtobufWrap)(nil),        // 1: marshaller.ProtobufWrap
+	(*ProtobufTestMessage)(nil), // 2: marshaller.ProtobufTestMessage
+	nil,                         // 3: marshaller.ProtobufTestMessage.DataEntry
+	(*anypb.Any)(nil),           // 4: google.protobuf.Any
 }
 var file_marshaller_protocol_proto_depIdxs = []int32{
-	3, // 0: marshaller.ProtobufWrap.data:type_name -> google.protobuf.Any
-	2, // 1: marshaller.ProtobufTestMessage.data:type_name -> marshaller.ProtobufTestMessage.DataEntry
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4, // 0: marshaller.ProtobufWrap.data:type_name -> google.protobuf.Any
+	0, // 1: marshaller.ProtobufWrap.err:type_name -> marshaller.ProtobufErrorWrap
+	3, // 2: marshaller.ProtobufTestMessage.data:type_name -> marshaller.ProtobufTestMessage.DataEntry
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_marshaller_protocol_proto_init() }
@@ -182,7 +239,7 @@ func file_marshaller_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_marshaller_protocol_proto_rawDesc), len(file_marshaller_protocol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

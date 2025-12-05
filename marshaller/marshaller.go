@@ -10,7 +10,11 @@ type PayloadMarshaller interface {
 	Unmarshall(data []byte, v *MarshalObject) error
 }
 
+type Error struct {
+	Text string
+	Code int
+}
 type MarshalObject struct {
-	Data  any
-	Error string
+	Data any
+	Err  *Error
 }

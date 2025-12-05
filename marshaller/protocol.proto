@@ -4,9 +4,14 @@ package marshaller;
 option go_package = "./;marshaller";
 import "google/protobuf/any.proto";
 
+message ProtobufErrorWrap {
+  string text = 1;
+  int32 code = 2;
+}
+
 message ProtobufWrap {
   google.protobuf.Any data = 1;
-  string error = 2;
+  ProtobufErrorWrap err = 2;
 }
 
 message ProtobufTestMessage {
