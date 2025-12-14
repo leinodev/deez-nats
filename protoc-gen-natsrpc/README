@@ -1,0 +1,2 @@
+go build -o protoc-gen-nrpc.exe .\main.go
+protoc --go_out=. --natsrpc_out=. .\example\example.proto
