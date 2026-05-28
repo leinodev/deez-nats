@@ -1,8 +1,11 @@
 package natsevents
 
 import (
+	"time"
+
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // JetStream Events Options Builders
@@ -54,11 +57,47 @@ func WithJetStreamDefaultEventHandlerMarshaller(m marshaller.PayloadMarshaller) 
 	}
 }
 
+func WithJetStreamConsumerAckPolicy(policy jetstream.AckPolicy) JetStreamEventsOptionFunc {
+	return func(opts *JetStreamEventsOptions) {
+		opts.ConsumerAckPolicy = policy
+	}
+}
+
+func WithJetStreamConsumerAckWait(d time.Duration) JetStreamEventsOptionFunc {
+	return func(opts *JetStreamEventsOptions) {
+		opts.ConsumerAckWait = d
+	}
+}
+
+func WithJetStreamConsumerMaxDeliver(n int) JetStreamEventsOptionFunc {
+	return func(opts *JetStreamEventsOptions) {
+		opts.ConsumerMaxDeliver = n
+	}
+}
+
+func WithJetStreamConsumerDurable(name string) JetStreamEventsOptionFunc {
+	return func(opts *JetStreamEventsOptions) {
+		opts.ConsumerDurable = name
+	}
+}
+
 // JetStream Event Handler Options Builders
 
 func WithJetStreamHandlerMarshaller(m marshaller.PayloadMarshaller) JetStreamEventHandlerOptionFunc {
 	return func(opts *JetStreamEventHandlerOptions) {
 		opts.Marshaller = m
+	}
+}
+
+func WithJetStreamHandlerFilterSubjects(subjects ...string) JetStreamEventHandlerOptionFunc {
+	return func(opts *JetStreamEventHandlerOptions) {
+		opts.FilterSubjects = append([]string(nil), subjects...)
+	}
+}
+
+func WithJetStreamHandlerConsumerDurable(name string) JetStreamEventHandlerOptionFunc {
+	return func(opts *JetStreamEventHandlerOptions) {
+		opts.ConsumerDurable = name
 	}
 }
 
