@@ -1,0 +1,116 @@
+// ==== NATS glue ====
+use std::sync::Arc;
+
+/// NATS subjects for this contract.
+pub mod subjects {
+{{range .Services}}{{range .Methods}}    pub const {{.KtConst}}: &str = "{{.Subject}}";
+{{end}}{{end}}}
+{{range .Services}}{{$svc := .}}{{if .RPCMethods}}
+/// Generated NATS-RPC client for {{.Name}} (async request/reply, protobuf wire).
+#[derive(Clone)]
+pub struct {{.Name}}Client {
+    client: async_nats::Client,
+}
+
+impl {{.Name}}Client {
+    pub fn new(client: async_nats::Client) -> Self {
+        Self { client }
+    }
+{{range .RPCMethods}}
+    /// Calls `{{.Subject}}`.
+    pub async fn {{snake .Name}}(&self, req: &{{.InputName}}) -> Result<{{.OutputName}}, DnatsError> {
+        dnats::request(&self.client, subjects::{{.KtConst}}, req, "{{.InputTypeURL}}").await
+    }
+{{end}}}
+
+/// Server-side contract for {{.Name}}. Implement it, then call `serve_{{snake .Name}}`.
+#[async_trait::async_trait]
+pub trait {{.Name}}Server: Send + Sync + 'static {
+{{range .RPCMethods}}    async fn {{snake .Name}}(&self, req: {{.InputName}}) -> Result<{{.OutputName}}, String>;
+{{end}}}
+
+/// Subscribes `srv`'s handlers on the {{.Name}} RPC subjects (spawns background tasks).
+pub async fn serve_{{snake .Name}}<S: {{.Name}}Server>(
+    client: async_nats::Client,
+    srv: Arc<S>,
+) -> Result<(), DnatsError> {
+    use futures::StreamExt;
+{{range .RPCMethods}}    {
+        let mut sub = client.subscribe(subjects::{{.KtConst}}).await?;
+        let client = client.clone();
+        let srv = srv.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = sub.next().await {
+                let reply = match msg.reply {
+                    Some(r) => r,
+                    None => continue,
+                };
+                let payload = msg.payload;
+                let client = client.clone();
+                let srv = srv.clone();
+                tokio::spawn(async move {
+                    let result = match dnats::unwrap_value::<{{.InputName}}>(&payload) {
+                        Ok(req) => srv.{{snake .Name}}(req).await,
+                        Err(e) => Err(e.to_string()),
+                    };
+                    let _ = dnats::reply(&client, reply, result, "{{.OutputTypeURL}}").await;
+                });
+            }
+        });
+    }
+{{end}}    Ok(())
+}
+{{end}}{{if .EventMethods}}
+/// Publishes {{.Name}} events ({{if $svc.IsJetStream}}JetStream stream {{$svc.EventStream}}{{else}}core broadcast{{end}}).
+#[derive(Clone)]
+pub struct {{.Name}}Publisher {
+    {{if $svc.IsJetStream}}js: async_nats::jetstream::Context,{{else}}client: async_nats::Client,{{end}}
+}
+
+impl {{.Name}}Publisher {
+    pub fn new({{if $svc.IsJetStream}}js: async_nats::jetstream::Context{{else}}client: async_nats::Client{{end}}) -> Self {
+        Self { {{if $svc.IsJetStream}}js{{else}}client{{end}} }
+    }
+{{range .EventMethods}}
+    /// Publishes `{{.Subject}}`.
+    pub async fn {{snake .Name}}(&self, ev: &{{.InputName}}) -> Result<(), DnatsError> {
+        dnats::{{if $svc.IsJetStream}}emit_jetstream(&self.js{{else}}emit_core(&self.client{{end}}, subjects::{{.KtConst}}, ev, "{{.InputTypeURL}}").await
+    }
+{{end}}}
+
+/// Consumes {{.Name}} events. Implement it, then call `subscribe_{{snake .Name}}`.
+#[async_trait::async_trait]
+pub trait {{.Name}}Handler: Send + Sync + 'static {
+{{range .EventMethods}}    async fn {{snake .Name}}(&self, ev: {{.InputName}});
+{{end}}}
+
+/// Subscribes `handler` on the {{.Name}} event subjects (spawns background tasks).
+pub async fn subscribe_{{snake .Name}}<H: {{.Name}}Handler>(
+    {{if $svc.IsJetStream}}js: async_nats::jetstream::Context{{else}}client: async_nats::Client{{end}},
+    handler: Arc<H>,
+) -> Result<(), DnatsError> {
+    use futures::StreamExt;
+{{range .EventMethods}}    {
+{{if $svc.IsJetStream}}        let mut messages = dnats::jetstream_messages(&js, "{{$svc.EventStream}}", subjects::{{.KtConst}}).await?;
+        let handler = handler.clone();
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = messages.next().await {
+                if let Ok(ev) = dnats::unwrap_value::<{{.InputName}}>(&msg.payload) {
+                    handler.{{snake .Name}}(ev).await;
+                }
+                let _ = msg.ack().await;
+            }
+        });
+{{else}}        let mut sub = client.subscribe(subjects::{{.KtConst}}).await?;
+        let handler = handler.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = sub.next().await {
+                if let Ok(ev) = dnats::unwrap_value::<{{.InputName}}>(&msg.payload) {
+                    handler.{{snake .Name}}(ev).await;
+                }
+            }
+        });
+{{end}}    }
+{{end}}    Ok(())
+}
+{{end}}{{end}}

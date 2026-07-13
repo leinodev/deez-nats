@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+// Package deeznats holds the custom protobuf options that drive the deez-nats
+// client/server code generator (dnatsgen). A contract .proto imports this file
+// and annotates its services/methods with NATS subjects + transport intent.
+package deeznats;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/leinodev/deez-nats/dnatsgen/annotations;dnatsannotations";
+
+extend google.protobuf.ServiceOptions {
+  // subject_prefix is joined (with '.') in front of every method subject leaf,
+  // e.g. "economy" -> "economy.wallet.get".
+  string subject_prefix = 60001;
+  // events marks the whole service as pub/sub (fire-and-forget) instead of
+  // request/reply RPC. Every method becomes an event.
+  bool events = 60002;
+  // jetstream selects the events transport for this service:
+  // true = JetStream (durable), false = core NATS (broadcast). Ignored for RPC.
+  bool jetstream = 60003;
+  // stream is the JetStream stream name used when jetstream = true.
+  string stream = 60004;
+}
+
+extend google.protobuf.MethodOptions {
+  // subject is the leaf appended to the service subject_prefix, e.g. "wallet.get".
+  // When empty, dnatsgen derives it from the method name (GetBalance -> get.balance).
+  string subject = 60001;
+  // event marks a single method as an event inside an otherwise-RPC service.
+  bool event = 60002;
+  // event_jetstream overrides the transport for this single event method.
+  bool event_jetstream = 60003;
+  // event_stream overrides the JetStream stream for this single event method.
+  string event_stream = 60004;
+}

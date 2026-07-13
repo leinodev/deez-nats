@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+// Package example is a self-contained contract that exercises every dnatsgen
+// path: request/reply RPC, core (broadcast) events, and JetStream (durable)
+// events, over a representative spread of field types.
+package example;
+
+import "deeznats/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/leinodev/deez-nats/dnatsgen/examples/contract/gen/go/examplepb;examplepb";
+
+// ---- messages ----
+
+message GetBalanceRequest {
+  string server_id = 1;
+  string owner_id = 2;
+}
+
+message GetBalanceResponse {
+  string balance = 1;
+  string currency_code = 2;
+  int64 updated_at = 3;
+}
+
+message TransferRequest {
+  string idempotency_key = 1;
+  string from_owner_id = 2;
+  string to_owner_id = 3;
+  string amount = 4;
+}
+
+message TransferResponse {
+  string transaction_id = 1;
+  bool ok = 2;
+}
+
+message PresenceChanged {
+  string player_id = 1;
+  string server_id = 2;
+  int32 ping_ms = 3;
+  repeated string roles = 4;
+  sint32 ping_delta = 5; // exercises @ProtoType(SIGNED)
+}
+
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_CREATE = 1;
+  ACTION_DELETE = 2;
+}
+
+message AuditEntry {
+  string id = 1;
+  string actor_id = 2;
+  Action action = 3;
+  map<string, string> meta = 4;
+  int64 at = 5;
+  sfixed64 seq = 6; // exercises @ProtoType(FIXED)
+}
+
+// ---- services ----
+
+// Wallet is a request/reply RPC service: subjects wallet.get, wallet.transfer.
+service Wallet {
+  option (deeznats.subject_prefix) = "wallet";
+
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
+    option (deeznats.subject) = "get";
+  }
+  rpc Transfer(TransferRequest) returns (TransferResponse) {
+    option (deeznats.subject) = "transfer";
+  }
+}
+
+// Presence broadcasts core-NATS events: subjects presence.online, presence.offline.
+service Presence {
+  option (deeznats.subject_prefix) = "presence";
+  option (deeznats.events) = true;
+
+  rpc Online(PresenceChanged) returns (google.protobuf.Empty) {
+    option (deeznats.subject) = "online";
+  }
+  rpc Offline(PresenceChanged) returns (google.protobuf.Empty) {
+    option (deeznats.subject) = "offline";
+  }
+}
+
+// Audit publishes durable JetStream events into stream AUDIT: subject audit.logged.
+service Audit {
+  option (deeznats.subject_prefix) = "audit";
+  option (deeznats.events) = true;
+  option (deeznats.jetstream) = true;
+  option (deeznats.stream) = "AUDIT";
+
+  rpc Logged(AuditEntry) returns (google.protobuf.Empty) {
+    option (deeznats.subject) = "logged";
+  }
+}
