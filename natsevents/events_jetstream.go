@@ -3,6 +3,7 @@ package natsevents
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,15 +58,46 @@ func (e *jetStreamNatsEventsImpl) Group(group string) EventRouter[jetstream.Msg,
 
 // methods
 func (e *jetStreamNatsEventsImpl) StartWithContext(ctx context.Context) error {
+	if strings.TrimSpace(e.options.Stream) == "" {
+		return fmt.Errorf("jetstream stream is required (use WithJetStreamStream)")
+	}
+
+	routes := e.router.dfs()
 	var sub jetstream.Consumer
 	var err error
 
-	for _, route := range e.router.dfs() {
+	for _, route := range routes {
 		handler := e.wrapHandler(ctx, route)
 
-		// TODO: add options and maybe pull consumer
+		filterSubjects := []string{route.Name}
+		if len(route.Options.FilterSubjects) > 0 {
+			filterSubjects = append([]string(nil), route.Options.FilterSubjects...)
+		}
+
+		durable := strings.TrimSpace(route.Options.ConsumerDurable)
+		if durable == "" {
+			durable = jetStreamPushDurable(e.options.ConsumerDurable, route.Name, len(routes))
+		} else {
+			durable = sanitizeJetStreamDurable(durable)
+		}
+
 		consumerConfig := jetstream.ConsumerConfig{
-			DeliverGroup: e.options.DeliverGroup,
+			DeliverGroup:   e.options.DeliverGroup,
+			FilterSubjects: filterSubjects,
+		}
+		if durable != "" {
+			consumerConfig.Durable = durable
+		}
+		policy := e.options.ConsumerAckPolicy
+		if policy == 0 {
+			policy = jetstream.AckExplicitPolicy
+		}
+		consumerConfig.AckPolicy = policy
+		if e.options.ConsumerAckWait > 0 {
+			consumerConfig.AckWait = e.options.ConsumerAckWait
+		}
+		if e.options.ConsumerMaxDeliver > 0 {
+			consumerConfig.MaxDeliver = e.options.ConsumerMaxDeliver
 		}
 
 		sub, err = e.js.CreateOrUpdateConsumer(ctx, e.options.Stream, consumerConfig)

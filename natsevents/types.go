@@ -2,6 +2,7 @@ package natsevents
 
 import (
 	"context"
+	"time"
 
 	"github.com/leinodev/deez-nats/marshaller"
 	"github.com/nats-io/nats.go"
@@ -37,6 +38,10 @@ type CoreEventEmitOptionFunc func(*CoreEventEmitOptions)
 
 type JetStreamEventHandlerOptions struct {
 	Marshaller marshaller.PayloadMarshaller
+	// FilterSubjects — если не пусто, подставляется в jetstream.ConsumerConfig вместо subject маршрута.
+	FilterSubjects []string
+	// ConsumerDurable — если не пусто, имя durable для этого консьюмера (переопределяет расчёт из JetStreamEventsOptions.ConsumerDurable).
+	ConsumerDurable string
 }
 type JetStreamEventEmitOptions struct {
 	Marshaller marshaller.PayloadMarshaller
@@ -50,6 +55,12 @@ type JetStreamEventsOptions struct {
 	DefaultEmitMarshaller marshaller.PayloadMarshaller
 
 	DefaultEventHandlerMarshaller marshaller.PayloadMarshaller
+
+	// Параметры push-консьюмера JetStream (CreateOrUpdateConsumer).
+	ConsumerAckPolicy  jetstream.AckPolicy // нулевое значение — AckExplicitPolicy
+	ConsumerAckWait    time.Duration       // 0 — не задавать (сервер по умолчанию)
+	ConsumerMaxDeliver int                 // 0 — не задавать
+	ConsumerDurable    string              // пусто — ephemeral; при нескольких маршрутах добавляется суффикс по subject
 }
 type JetStreamNatsEvents interface {
 	NatsEvents[jetstream.Msg, any, JetStreamEventHandlerOptions, JetStreamEventEmitOptions]
