@@ -7,7 +7,7 @@ package deeznats;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/leinodev/deez-nats/dnatsgen/annotations;dnatsannotations";
+option go_package = "github.com/leinodev/deez-nats/dnatsgenannotations;dnatsannotations";
 
 extend google.protobuf.ServiceOptions {
   // subject_prefix is joined (with '.') in front of every method subject leaf,

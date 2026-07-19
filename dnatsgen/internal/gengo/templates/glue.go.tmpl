@@ -9,6 +9,7 @@ package {{.Contract.GoPkgName}}
 // Subjects.
 const (
 {{range .Contract.Services}}{{range .Methods}}	{{.GoConst}} = "{{.Subject}}"
+{{end}}{{if and .EventMethods .IsJetStream}}	{{.Name}}Stream = "{{.EventStream}}"
 {{end}}{{end}})
 {{range .Contract.Services}}
 {{if .RPCMethods}}
@@ -19,15 +20,24 @@ type {{.Name}}Client struct {
 }
 
 // New{{.Name}}Client builds a {{.Name}}Client over the given NATS connection.
-func New{{.Name}}Client(nc *nats.Conn) *{{.Name}}Client {
+func New{{.Name}}Client(nc *nats.Conn, opts ...natsrpc.RPCOption) *{{.Name}}Client {
+	opts = append(opts,
+		natsrpc.WithDefaultCallMarshaller(marshaller.DefaultProtoMarshaller),
+	)
 	return &{{.Name}}Client{
-		rpc: natsrpc.New(nc, natsrpc.WithDefaultCallMarshaller(marshaller.DefaultProtoMarshaller)),
+		rpc: natsrpc.New(nc, opts...),
 	}
+}
+
+// New{{.Name}}ClientWithRPC builds a {{.Name}}Client over an existing RPC transport.
+func New{{.Name}}ClientWithRPC(rpc natsrpc.NatsRPC) *{{.Name}}Client {
+	return &{{.Name}}Client{rpc: rpc}
 }
 {{range .RPCMethods}}
 // {{.Name}} calls {{.Subject}}.
 func (c *{{.Service}}Client) {{.Name}}(ctx context.Context, req *{{.InputName}}, opts ...natsrpc.CallOption) (*{{.OutputName}}, error) {
 	resp := new({{.OutputName}})
+	opts = append(opts, natsrpc.WithCallMarshaller(marshaller.DefaultProtoMarshaller))
 	if err := c.rpc.CallRPC(ctx, {{.GoConst}}, req, resp, opts...); err != nil {
 		return nil, err
 	}
@@ -62,18 +72,23 @@ type {{.Name}}Publisher struct {
 }
 
 // New{{.Name}}Publisher builds a {{.Name}}Publisher over a JetStream context.
-func New{{.Name}}Publisher(js jetstream.JetStream) *{{.Name}}Publisher {
-	return &{{.Name}}Publisher{
-		events: natsevents.NewJetStream(js,
-			natsevents.WithJetStreamStream("{{.EventStream}}"),
-			natsevents.WithJetStreamDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
-		),
-	}
+func New{{.Name}}Publisher(js jetstream.JetStream, opts ...natsevents.JetStreamEventsOptionFunc) *{{.Name}}Publisher {
+	opts = append(opts,
+		natsevents.WithJetStreamStream("{{.EventStream}}"),
+		natsevents.WithJetStreamDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
+	)
+	return New{{.Name}}PublisherWithRouter(natsevents.NewJetStream(js, opts...))
+}
+
+// New{{.Name}}PublisherWithRouter builds a {{.Name}}Publisher over an existing events router.
+func New{{.Name}}PublisherWithRouter(router natsevents.JetStreamNatsEvents) *{{.Name}}Publisher {
+	return &{{.Name}}Publisher{events: router}
 }
 {{range .EventMethods}}
 // {{.Name}} publishes {{.Subject}}.
-func (p *{{.Service}}Publisher) {{.Name}}(ctx context.Context, ev *{{.InputName}}) error {
-	return p.events.Emit(ctx, {{.GoConst}}, ev)
+func (p *{{.Service}}Publisher) {{.Name}}(ctx context.Context, ev *{{.InputName}}, opts ...func(*natsevents.JetStreamEventEmitOptions)) error {
+	opts = append(opts, natsevents.WithJetStreamEmitMarshaller(marshaller.DefaultProtoMarshaller))
+	return p.events.Emit(ctx, {{.GoConst}}, ev, opts...)
 }
 {{end}}
 // {{.Name}}Handler consumes the {{.Name}} events from JetStream.
@@ -98,15 +113,22 @@ type {{.Name}}Publisher struct {
 }
 
 // New{{.Name}}Publisher builds a {{.Name}}Publisher over the given NATS connection.
-func New{{.Name}}Publisher(nc *nats.Conn) *{{.Name}}Publisher {
-	return &{{.Name}}Publisher{
-		events: natsevents.New(nc, natsevents.WithCoreDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller)),
-	}
+func New{{.Name}}Publisher(nc *nats.Conn, opts ...natsevents.CoreEventsOptionFunc) *{{.Name}}Publisher {
+	opts = append(opts,
+		natsevents.WithCoreDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
+	)
+	return New{{.Name}}PublisherWithRouter(natsevents.New(nc, opts...))
+}
+
+// New{{.Name}}PublisherWithRouter builds a {{.Name}}Publisher over an existing events router.
+func New{{.Name}}PublisherWithRouter(router natsevents.CoreNatsEvents) *{{.Name}}Publisher {
+	return &{{.Name}}Publisher{events: router}
 }
 {{range .EventMethods}}
 // {{.Name}} broadcasts {{.Subject}}.
-func (p *{{.Service}}Publisher) {{.Name}}(ctx context.Context, ev *{{.InputName}}) error {
-	return p.events.Emit(ctx, {{.GoConst}}, ev)
+func (p *{{.Service}}Publisher) {{.Name}}(ctx context.Context, ev *{{.InputName}}, opts ...func(*natsevents.CoreEventEmitOptions)) error {
+	opts = append(opts, natsevents.WithCoreEmitMarshaller(marshaller.DefaultProtoMarshaller))
+	return p.events.Emit(ctx, {{.GoConst}}, ev, opts...)
 }
 {{end}}
 // {{.Name}}Handler consumes the {{.Name}} broadcast events.

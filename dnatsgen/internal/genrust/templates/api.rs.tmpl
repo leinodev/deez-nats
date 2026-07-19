@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 /// NATS subjects for this contract.
 pub mod subjects {
+{{range .Services}}{{if .IsJetStream}}    pub const {{upperSnake .Name}}_STREAM: &str = "{{.EventStream}}";
+{{end}}{{end}}
 {{range .Services}}{{range .Methods}}    pub const {{.KtConst}}: &str = "{{.Subject}}";
 {{end}}{{end}}}
 {{range .Services}}{{$svc := .}}{{if .RPCMethods}}

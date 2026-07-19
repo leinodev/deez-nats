@@ -148,7 +148,7 @@ const file_deeznats_annotations_proto_rawDesc = "" +
 	"\asubject\x12\x1e.google.protobuf.MethodOptions\x18\xe1\xd4\x03 \x01(\tR\asubject:6\n" +
 	"\x05event\x12\x1e.google.protobuf.MethodOptions\x18\xe2\xd4\x03 \x01(\bR\x05event:I\n" +
 	"\x0fevent_jetstream\x12\x1e.google.protobuf.MethodOptions\x18\xe3\xd4\x03 \x01(\bR\x0eeventJetstream:C\n" +
-	"\fevent_stream\x12\x1e.google.protobuf.MethodOptions\x18\xe4\xd4\x03 \x01(\tR\veventStreamBEZCgithub.com/leinodev/deez-nats/dnatsgen/annotations;dnatsannotationsb\x06proto3"
+	"\fevent_stream\x12\x1e.google.protobuf.MethodOptions\x18\xe4\xd4\x03 \x01(\tR\veventStreamBDZBgithub.com/leinodev/deez-nats/dnatsgenannotations;dnatsannotationsb\x06proto3"
 
 var file_deeznats_annotations_proto_goTypes = []any{
 	(*descriptorpb.ServiceOptions)(nil), // 0: google.protobuf.ServiceOptions

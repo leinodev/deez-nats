@@ -44,12 +44,14 @@ func (m *Tracker) Unsubscribe() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for idx, sub := range m.subs {
+	kept := m.subs[:0]
+	for _, sub := range m.subs {
 		if !sub.Dirty {
+			kept = append(kept, sub)
 			continue
 		}
 		_ = sub.Sub.Unsubscribe()
-		// Remove from subs
-		m.subs = append(m.subs[:idx], m.subs[idx+1:]...)
 	}
+	clear(m.subs[len(kept):])
+	m.subs = kept
 }

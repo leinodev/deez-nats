@@ -54,7 +54,7 @@ func (c *rpcContextImpl) Ok(data any) error {
 	return nil
 }
 func (c *rpcContextImpl) RequestHeaders() nats.Header {
-	return c.Headers()
+	return c.Base.Headers()
 }
 func (c *rpcContextImpl) Headers() nats.Header {
 	return c.responseHeaders

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -23,7 +24,10 @@ import (
 var templatesFS embed.FS
 
 var apiTmpl = template.Must(template.New("api.rs.tmpl").
-	Funcs(template.FuncMap{"snake": snake}).
+	Funcs(template.FuncMap{
+		"snake":      snake,
+		"upperSnake": func(s string) string { return strings.ToUpper(snake(s)) },
+	}).
 	ParseFS(templatesFS, "templates/api.rs.tmpl"))
 
 // GenerateContract emits <stem>.rs (messages + NATS glue) for one contract.
@@ -37,6 +41,7 @@ func GenerateContract(fd protoreflect.FileDescriptor, c *model.Contract, stem, o
 	fmt.Fprintf(&b, "// source: %s\n", stem)
 	b.WriteString("#![allow(clippy::all, dead_code, unused_imports)]\n\n")
 	b.WriteString("use crate::dnats::{self, DnatsError};\n\n")
+	writeExternalTypeImports(&b, fd)
 
 	b.WriteString("// ==== messages ====\n\n")
 	writeMessages(&b, fd)
@@ -63,6 +68,67 @@ func GenerateRuntime(outDir string) error {
 }
 
 // ---- message emission (prost) ----
+
+// writeExternalTypeImports imports protobuf types referenced from another
+// generated Rust module. Message emission intentionally flattens nested types,
+// so the imported identifiers follow the same convention.
+func writeExternalTypeImports(b *strings.Builder, fd protoreflect.FileDescriptor) {
+	refs := make(map[string]map[string]struct{})
+
+	var messages []protoreflect.MessageDescriptor
+	var enums []protoreflect.EnumDescriptor
+	collect(fd.Messages(), fd.Enums(), &messages, &enums)
+	for _, message := range messages {
+		fields := message.Fields()
+		for i := 0; i < fields.Len(); i++ {
+			field := fields.Get(i)
+			if field.IsMap() {
+				addExternalFieldType(refs, fd, field.MapValue())
+				continue
+			}
+			addExternalFieldType(refs, fd, field)
+		}
+	}
+
+	modules := make([]string, 0, len(refs))
+	for module := range refs {
+		modules = append(modules, module)
+	}
+	sort.Strings(modules)
+	for _, module := range modules {
+		names := make([]string, 0, len(refs[module]))
+		for name := range refs[module] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(b, "use crate::%s::{%s};\n", module, strings.Join(names, ", "))
+	}
+	if len(modules) > 0 {
+		b.WriteString("\n")
+	}
+}
+
+func addExternalFieldType(refs map[string]map[string]struct{}, current protoreflect.FileDescriptor, field protoreflect.FieldDescriptor) {
+	var descriptor protoreflect.Descriptor
+	switch field.Kind() {
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		descriptor = field.Message()
+	case protoreflect.EnumKind:
+		descriptor = field.Enum()
+	default:
+		return
+	}
+
+	parent := descriptor.ParentFile()
+	if parent.Path() == current.Path() {
+		return
+	}
+	module := snake(strings.TrimSuffix(filepath.Base(parent.Path()), filepath.Ext(parent.Path())))
+	if refs[module] == nil {
+		refs[module] = make(map[string]struct{})
+	}
+	refs[module][string(descriptor.Name())] = struct{}{}
+}
 
 func writeMessages(b *strings.Builder, fd protoreflect.FileDescriptor) {
 	var msgs []protoreflect.MessageDescriptor

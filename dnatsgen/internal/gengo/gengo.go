@@ -7,7 +7,10 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,11 +42,59 @@ func GenerateMessages(fdset *descriptorpb.FileDescriptorSet, fileToGenerate []st
 	}
 	for _, f := range files {
 		dst := filepath.Join(outDir, filepath.Base(f.GetName()))
-		if err := os.WriteFile(dst, []byte(f.GetContent()), 0o644); err != nil {
+		content, err := normalizeGoAcronyms([]byte(f.GetContent()))
+		if err != nil {
+			return fmt.Errorf("normalize Go identifiers in %s: %w", f.GetName(), err)
+		}
+		if err := os.WriteFile(dst, content, 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", dst, err)
 		}
 	}
 	return nil
+}
+
+// normalizeGoAcronyms preserves the public Go spelling already used by the
+// monorepo contracts while leaving protobuf field names/descriptors untouched.
+// protoc-gen-go intentionally emits Id/Ids/Url/Ok; dnatsgen's Go API uses the
+// conventional ID/IDs/URL/OK spellings.
+func normalizeGoAcronyms(src []byte) ([]byte, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
+	if err != nil {
+		return nil, err
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		ident, ok := node.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		ident.Name = normalizeGoIdentifier(ident.Name)
+		return true
+	})
+
+	var out bytes.Buffer
+	if err := format.Node(&out, fset, file); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func normalizeGoIdentifier(name string) string {
+	for _, replacement := range []struct {
+		from string
+		to   string
+	}{
+		{from: "Ids", to: "IDs"},
+		{from: "Id", to: "ID"},
+		{from: "Urls", to: "URLs"},
+		{from: "Url", to: "URL"},
+		{from: "Ok", to: "OK"},
+	} {
+		if strings.HasSuffix(name, replacement.from) {
+			return strings.TrimSuffix(name, replacement.from) + replacement.to
+		}
+	}
+	return name
 }
 
 // runProtocGenGo builds a CodeGeneratorRequest and pipes it to the protoc-gen-go

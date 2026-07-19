@@ -11,7 +11,7 @@
 package examplepb
 
 import (
-	_ "github.com/leinodev/deez-nats/dnatsgen/annotations"
+	_ "github.com/leinodev/deez-nats/dnatsgenannotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"

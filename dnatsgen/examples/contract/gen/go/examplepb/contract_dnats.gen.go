@@ -18,6 +18,7 @@ const (
 	PresenceOnlineSubject   = "presence.online"
 	PresenceOfflineSubject  = "presence.offline"
 	AuditLoggedSubject      = "audit.logged"
+	AuditStream             = "AUDIT"
 )
 
 // WalletClient is the generated NATS-RPC client for the Wallet service.
@@ -27,15 +28,24 @@ type WalletClient struct {
 }
 
 // NewWalletClient builds a WalletClient over the given NATS connection.
-func NewWalletClient(nc *nats.Conn) *WalletClient {
+func NewWalletClient(nc *nats.Conn, opts ...natsrpc.RPCOption) *WalletClient {
+	opts = append(opts,
+		natsrpc.WithDefaultCallMarshaller(marshaller.DefaultProtoMarshaller),
+	)
 	return &WalletClient{
-		rpc: natsrpc.New(nc, natsrpc.WithDefaultCallMarshaller(marshaller.DefaultProtoMarshaller)),
+		rpc: natsrpc.New(nc, opts...),
 	}
+}
+
+// NewWalletClientWithRPC builds a WalletClient over an existing RPC transport.
+func NewWalletClientWithRPC(rpc natsrpc.NatsRPC) *WalletClient {
+	return &WalletClient{rpc: rpc}
 }
 
 // GetBalance calls wallet.get.
 func (c *WalletClient) GetBalance(ctx context.Context, req *GetBalanceRequest, opts ...natsrpc.CallOption) (*GetBalanceResponse, error) {
 	resp := new(GetBalanceResponse)
+	opts = append(opts, natsrpc.WithCallMarshaller(marshaller.DefaultProtoMarshaller))
 	if err := c.rpc.CallRPC(ctx, WalletGetBalanceSubject, req, resp, opts...); err != nil {
 		return nil, err
 	}
@@ -45,6 +55,7 @@ func (c *WalletClient) GetBalance(ctx context.Context, req *GetBalanceRequest, o
 // Transfer calls wallet.transfer.
 func (c *WalletClient) Transfer(ctx context.Context, req *TransferRequest, opts ...natsrpc.CallOption) (*TransferResponse, error) {
 	resp := new(TransferResponse)
+	opts = append(opts, natsrpc.WithCallMarshaller(marshaller.DefaultProtoMarshaller))
 	if err := c.rpc.CallRPC(ctx, WalletTransferSubject, req, resp, opts...); err != nil {
 		return nil, err
 	}
@@ -89,20 +100,28 @@ type PresencePublisher struct {
 }
 
 // NewPresencePublisher builds a PresencePublisher over the given NATS connection.
-func NewPresencePublisher(nc *nats.Conn) *PresencePublisher {
-	return &PresencePublisher{
-		events: natsevents.New(nc, natsevents.WithCoreDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller)),
-	}
+func NewPresencePublisher(nc *nats.Conn, opts ...natsevents.CoreEventsOptionFunc) *PresencePublisher {
+	opts = append(opts,
+		natsevents.WithCoreDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
+	)
+	return NewPresencePublisherWithRouter(natsevents.New(nc, opts...))
+}
+
+// NewPresencePublisherWithRouter builds a PresencePublisher over an existing events router.
+func NewPresencePublisherWithRouter(router natsevents.CoreNatsEvents) *PresencePublisher {
+	return &PresencePublisher{events: router}
 }
 
 // Online broadcasts presence.online.
-func (p *PresencePublisher) Online(ctx context.Context, ev *PresenceChanged) error {
-	return p.events.Emit(ctx, PresenceOnlineSubject, ev)
+func (p *PresencePublisher) Online(ctx context.Context, ev *PresenceChanged, opts ...func(*natsevents.CoreEventEmitOptions)) error {
+	opts = append(opts, natsevents.WithCoreEmitMarshaller(marshaller.DefaultProtoMarshaller))
+	return p.events.Emit(ctx, PresenceOnlineSubject, ev, opts...)
 }
 
 // Offline broadcasts presence.offline.
-func (p *PresencePublisher) Offline(ctx context.Context, ev *PresenceChanged) error {
-	return p.events.Emit(ctx, PresenceOfflineSubject, ev)
+func (p *PresencePublisher) Offline(ctx context.Context, ev *PresenceChanged, opts ...func(*natsevents.CoreEventEmitOptions)) error {
+	opts = append(opts, natsevents.WithCoreEmitMarshaller(marshaller.DefaultProtoMarshaller))
+	return p.events.Emit(ctx, PresenceOfflineSubject, ev, opts...)
 }
 
 // PresenceHandler consumes the Presence broadcast events.
@@ -135,18 +154,23 @@ type AuditPublisher struct {
 }
 
 // NewAuditPublisher builds a AuditPublisher over a JetStream context.
-func NewAuditPublisher(js jetstream.JetStream) *AuditPublisher {
-	return &AuditPublisher{
-		events: natsevents.NewJetStream(js,
-			natsevents.WithJetStreamStream("AUDIT"),
-			natsevents.WithJetStreamDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
-		),
-	}
+func NewAuditPublisher(js jetstream.JetStream, opts ...natsevents.JetStreamEventsOptionFunc) *AuditPublisher {
+	opts = append(opts,
+		natsevents.WithJetStreamStream("AUDIT"),
+		natsevents.WithJetStreamDefaultEmitMarshaller(marshaller.DefaultProtoMarshaller),
+	)
+	return NewAuditPublisherWithRouter(natsevents.NewJetStream(js, opts...))
+}
+
+// NewAuditPublisherWithRouter builds a AuditPublisher over an existing events router.
+func NewAuditPublisherWithRouter(router natsevents.JetStreamNatsEvents) *AuditPublisher {
+	return &AuditPublisher{events: router}
 }
 
 // Logged publishes audit.logged.
-func (p *AuditPublisher) Logged(ctx context.Context, ev *AuditEntry) error {
-	return p.events.Emit(ctx, AuditLoggedSubject, ev)
+func (p *AuditPublisher) Logged(ctx context.Context, ev *AuditEntry, opts ...func(*natsevents.JetStreamEventEmitOptions)) error {
+	opts = append(opts, natsevents.WithJetStreamEmitMarshaller(marshaller.DefaultProtoMarshaller))
+	return p.events.Emit(ctx, AuditLoggedSubject, ev, opts...)
 }
 
 // AuditHandler consumes the Audit events from JetStream.

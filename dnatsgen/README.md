@@ -95,6 +95,10 @@ served from the generator's embedded copy — it need not exist on disk.
 - `<stem>_dnats.gen.go` — subjects consts; per RPC service a `…Client` (proto
   call marshaller) + `…Server` interface + `Register…Server`; per event service a
   `…Publisher` + `…Handler` interface + `Register…` (core or JetStream).
+  Clients can wrap an existing `natsrpc.NatsRPC`; publishers can wrap an
+  existing core/JetStream events router. Generated RPC/event methods accept
+  call/emit options (including headers) and always force the protobuf
+  marshaller after caller options.
 
 **Kotlin**:
 - `Messages.kt` — `@Serializable` data classes / enums with `@ProtoNumber` /
@@ -117,6 +121,18 @@ and the `kotlin("plugin.serialization")` plugin (already applied in every mod).
 Rust needs `prost`, `async-nats`, `async-trait`, `futures`, and a `tokio`
 runtime; the generated modules are wired into a crate by a hand-written
 `lib.rs` (`pub mod dnats; pub mod <stem>;`) — see `examples/contract/rust`.
+References to messages/enums from another proto are emitted as imports from the
+generated sibling module (for example, `events.rs` imports types from
+`crate::rpc`). JetStream service stream names are exported next to subject
+constants as `<SERVICE>_STREAM`.
+
+In the digiversity monorepo all owner contracts and their external Kotlin/Rust
+consumers are generated from the repository root:
+
+```sh
+scripts/generate-dnats.sh
+scripts/generate-dnats.sh --check
+```
 
 ## Verification
 
@@ -148,9 +164,5 @@ The same `goldenEnvelopeHex` is asserted byte-identical by Go, Kotlin, and Rust.
 - Kotlin map key/value integers use the default varint encoding (no per-entry
   `@ProtoType`); strings and the common scalar types are fully supported.
 
-## Known upstream issue
-
-`deez-nats` v1.2.0 `internal/subscriptions/Tracker.Unsubscribe` mutates its slice
-while ranging by index, so graceful `Shutdown` panics when a router has ≥2
-subscriptions. It is unrelated to generated code (the e2e tests avoid that path),
-but it affects real services and is worth fixing in the library.
+Graceful shutdown with multiple RPC/event subscriptions is covered by the Go
+e2e and tracker regression tests.
