@@ -15,9 +15,12 @@ repositories {
     mavenCentral()
 }
 
+val kotlinxSerializationVersion: String by project
+val jnatsVersion: String by project
+
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.6.3")
-    implementation("io.nats:jnats:2.20.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:$kotlinxSerializationVersion")
+    implementation("io.nats:jnats:$jnatsVersion")
 }
 
 // `./gradlew run` executes the Go<->Kotlin cross-language interop check.

@@ -24,6 +24,12 @@ type jetStreamNatsEventsImpl struct {
 	subsTracker   *subscriptions.Tracker
 }
 
+type jetStreamRoute = router.Record[
+	HandlerFunc[jetstream.Msg, any],
+	MiddlewareFunc[jetstream.Msg, any],
+	JetStreamEventHandlerOptions,
+]
+
 func NewJetStream(js jetstream.JetStream, opts ...JetStreamEventsOptionFunc) JetStreamNatsEvents {
 	options := JetStreamEventsOptions{
 		DefaultEmitMarshaller:         marshaller.DefaultJsonMarshaller,
@@ -63,58 +69,11 @@ func (e *jetStreamNatsEventsImpl) StartWithContext(ctx context.Context) error {
 	}
 
 	routes := e.router.dfs()
-	var sub jetstream.Consumer
-	var err error
-
 	for _, route := range routes {
-		handler := e.wrapHandler(ctx, route)
-
-		filterSubjects := []string{route.Name}
-		if len(route.Options.FilterSubjects) > 0 {
-			filterSubjects = append([]string(nil), route.Options.FilterSubjects...)
-		}
-
-		durable := strings.TrimSpace(route.Options.ConsumerDurable)
-		if durable == "" {
-			durable = jetStreamPushDurable(e.options.ConsumerDurable, route.Name, len(routes))
-		} else {
-			durable = sanitizeJetStreamDurable(durable)
-		}
-
-		consumerConfig := jetstream.ConsumerConfig{
-			DeliverGroup:   e.options.DeliverGroup,
-			FilterSubjects: filterSubjects,
-		}
-		if durable != "" {
-			consumerConfig.Durable = durable
-		}
-		policy := e.options.ConsumerAckPolicy
-		if policy == 0 {
-			policy = jetstream.AckExplicitPolicy
-		}
-		consumerConfig.AckPolicy = policy
-		if e.options.ConsumerAckWait > 0 {
-			consumerConfig.AckWait = e.options.ConsumerAckWait
-		}
-		if e.options.ConsumerMaxDeliver > 0 {
-			consumerConfig.MaxDeliver = e.options.ConsumerMaxDeliver
-		}
-
-		sub, err = e.js.CreateOrUpdateConsumer(ctx, e.options.Stream, consumerConfig)
-		if err != nil {
+		if err := e.startRoute(ctx, route, len(routes)); err != nil {
 			_ = e.Shutdown(ctx)
-
-			return fmt.Errorf("failed to subscribe %s: %w", route.Name, err)
+			return err
 		}
-
-		consumeCtx, err := sub.Consume(handler)
-		if err != nil {
-			_ = e.Shutdown(ctx)
-
-			return fmt.Errorf("failed to consume %s: %w", route.Name, err)
-		}
-
-		e.subsTracker.Track(subscriptions.NewJsSub(consumeCtx))
 	}
 
 	go func() {
@@ -126,6 +85,56 @@ func (e *jetStreamNatsEventsImpl) StartWithContext(ctx context.Context) error {
 
 	return nil
 }
+
+func (e *jetStreamNatsEventsImpl) startRoute(
+	ctx context.Context,
+	route jetStreamRoute,
+	routeCount int,
+) error {
+	handler := e.wrapHandler(ctx, route)
+	config := e.consumerConfig(route, routeCount)
+	consumer, err := e.js.CreateOrUpdateConsumer(ctx, e.options.Stream, config)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe %s: %w", route.Name, err)
+	}
+	consumeCtx, err := consumer.Consume(handler)
+	if err != nil {
+		return fmt.Errorf("failed to consume %s: %w", route.Name, err)
+	}
+	e.subsTracker.Track(subscriptions.NewJsSub(consumeCtx))
+	return nil
+}
+
+func (e *jetStreamNatsEventsImpl) consumerConfig(
+	route jetStreamRoute,
+	routeCount int,
+) jetstream.ConsumerConfig {
+	filterSubjects := []string{route.Name}
+	if len(route.Options.FilterSubjects) > 0 {
+		filterSubjects = append([]string(nil), route.Options.FilterSubjects...)
+	}
+	durable := strings.TrimSpace(route.Options.ConsumerDurable)
+	if durable == "" {
+		durable = jetStreamPushDurable(e.options.ConsumerDurable, route.Name, routeCount)
+	} else {
+		durable = sanitizeJetStreamDurable(durable)
+	}
+	config := jetstream.ConsumerConfig{
+		DeliverGroup: e.options.DeliverGroup, FilterSubjects: filterSubjects,
+		Durable: durable, AckPolicy: e.options.ConsumerAckPolicy,
+	}
+	if config.AckPolicy == 0 {
+		config.AckPolicy = jetstream.AckExplicitPolicy
+	}
+	if e.options.ConsumerAckWait > 0 {
+		config.AckWait = e.options.ConsumerAckWait
+	}
+	if e.options.ConsumerMaxDeliver > 0 {
+		config.MaxDeliver = e.options.ConsumerMaxDeliver
+	}
+	return config
+}
+
 func (e *jetStreamNatsEventsImpl) Emit(ctx context.Context, subject string, payload any, opts ...func(*JetStreamEventEmitOptions)) error {
 	if subject == "" {
 		return ErrEmptySubject

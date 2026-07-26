@@ -63,113 +63,132 @@ func buildContract(fd protoreflect.FileDescriptor, ktPackage string) (*model.Con
 
 	svcs := fd.Services()
 	for i := 0; i < svcs.Len(); i++ {
-		sd := svcs.Get(i)
-
-		var prefix, svcStream string
-		var svcEvents, svcJet bool
-		rangeOpts(sd.Options(), func(name string, v protoreflect.Value) {
-			switch name {
-			case optSubjectPrefix:
-				prefix = v.String()
-			case optServiceEvents:
-				svcEvents = v.Bool()
-			case optServiceJetStr:
-				svcJet = v.Bool()
-			case optServiceStream:
-				svcStream = v.String()
-			}
-		})
-
-		svc := &model.Service{Name: string(sd.Name())}
-		if svcEvents {
-			svc.Kind = model.KindEvent
-			if svcJet {
-				svc.EventTransport = model.JetStream
-			} else {
-				svc.EventTransport = model.Core
-			}
-			svc.EventStream = svcStream
-		}
-
-		ms := sd.Methods()
-		for j := 0; j < ms.Len(); j++ {
-			md := ms.Get(j)
-
-			// Streaming is not supported by deez-nats (unary request/reply only);
-			// warn and skip the method rather than silently mis-generating it.
-			if md.IsStreamingClient() || md.IsStreamingServer() {
-				warnings = append(warnings, fmt.Sprintf("streaming method %s.%s is not supported and was skipped", sd.Name(), md.Name()))
-				continue
-			}
-
-			var leaf, mStream string
-			var mEvent, mJet bool
-			rangeOpts(md.Options(), func(name string, v protoreflect.Value) {
-				switch name {
-				case optMethodSubject:
-					leaf = v.String()
-				case optMethodEvent:
-					mEvent = v.Bool()
-				case optMethodJetStr:
-					mJet = v.Bool()
-				case optMethodStream:
-					mStream = v.String()
-				}
-			})
-			_ = mJet
-			_ = mStream
-
-			if leaf == "" {
-				leaf = deriveLeaf(string(md.Name()))
-			}
-			subject := leaf
-			if prefix != "" {
-				subject = prefix + "." + leaf
-			}
-
-			m := &model.Method{
-				Name:         string(md.Name()),
-				KtFunc:       lowerFirst(string(md.Name())),
-				Service:      string(sd.Name()),
-				Subject:      subject,
-				GoConst:      goConst(string(sd.Name()), string(md.Name())),
-				KtConst:      ktConst(string(sd.Name()), string(md.Name())),
-				InputName:    string(md.Input().Name()),
-				InputTypeURL: typeURLPrefix + string(md.Input().FullName()),
-			}
-
-			if svcEvents || mEvent {
-				m.Kind = model.KindEvent
-				m.Transport = svc.EventTransport
-				m.Stream = svc.EventStream
-				if m.Transport == model.JetStream {
-					c.HasJetStreamEvents = true
-				} else {
-					c.HasCoreEvents = true
-				}
-				if md.Output().FullName() != "google.protobuf.Empty" {
-					return nil, nil, fmt.Errorf("event method %s.%s must return google.protobuf.Empty", sd.Name(), md.Name())
-				}
-			} else {
-				m.Kind = model.KindRPC
-				m.OutputName = string(md.Output().Name())
-				m.OutputTypeURL = typeURLPrefix + string(md.Output().FullName())
-				c.HasRPC = true
-			}
-			svc.Methods = append(svc.Methods, m)
-			if m.Kind == model.KindEvent {
-				svc.EventMethods = append(svc.EventMethods, m)
-			} else {
-				svc.RPCMethods = append(svc.RPCMethods, m)
-			}
-		}
-
-		if err := validateService(svc); err != nil {
+		service, serviceWarnings, err := buildService(svcs.Get(i), c)
+		if err != nil {
 			return nil, nil, err
 		}
-		c.Services = append(c.Services, svc)
+		warnings = append(warnings, serviceWarnings...)
+		c.Services = append(c.Services, service)
 	}
 	return c, warnings, nil
+}
+
+type serviceOptions struct {
+	prefix, stream string
+	events, jet    bool
+}
+
+func buildService(descriptor protoreflect.ServiceDescriptor, contract *model.Contract) (*model.Service, []string, error) {
+	options := readServiceOptions(descriptor)
+	service := &model.Service{Name: string(descriptor.Name())}
+	if options.events {
+		service.Kind = model.KindEvent
+		service.EventTransport = model.Core
+		if options.jet {
+			service.EventTransport = model.JetStream
+		}
+		service.EventStream = options.stream
+	}
+	var warnings []string
+	methods := descriptor.Methods()
+	for i := 0; i < methods.Len(); i++ {
+		method, warning, err := buildMethod(descriptor, methods.Get(i), service, options.prefix, contract)
+		if err != nil {
+			return nil, nil, err
+		}
+		if warning != "" {
+			warnings = append(warnings, warning)
+			continue
+		}
+		addMethod(service, method)
+	}
+	if err := validateService(service); err != nil {
+		return nil, nil, err
+	}
+	return service, warnings, nil
+}
+
+func readServiceOptions(descriptor protoreflect.ServiceDescriptor) serviceOptions {
+	var options serviceOptions
+	rangeOpts(descriptor.Options(), func(name string, value protoreflect.Value) {
+		switch name {
+		case optSubjectPrefix:
+			options.prefix = value.String()
+		case optServiceEvents:
+			options.events = value.Bool()
+		case optServiceJetStr:
+			options.jet = value.Bool()
+		case optServiceStream:
+			options.stream = value.String()
+		}
+	})
+	return options
+}
+
+func buildMethod(
+	serviceDescriptor protoreflect.ServiceDescriptor,
+	descriptor protoreflect.MethodDescriptor,
+	service *model.Service,
+	prefix string,
+	contract *model.Contract,
+) (*model.Method, string, error) {
+	if descriptor.IsStreamingClient() || descriptor.IsStreamingServer() {
+		return nil, fmt.Sprintf(
+			"streaming method %s.%s is not supported and was skipped", serviceDescriptor.Name(), descriptor.Name(),
+		), nil
+	}
+	leaf, event := readMethodOptions(descriptor)
+	if leaf == "" {
+		leaf = deriveLeaf(string(descriptor.Name()))
+	}
+	subject := leaf
+	if prefix != "" {
+		subject = prefix + "." + leaf
+	}
+	method := &model.Method{
+		Name: string(descriptor.Name()), KtFunc: lowerFirst(string(descriptor.Name())),
+		Service: string(serviceDescriptor.Name()), Subject: subject,
+		GoConst:   goConst(string(serviceDescriptor.Name()), string(descriptor.Name())),
+		KtConst:   ktConst(string(serviceDescriptor.Name()), string(descriptor.Name())),
+		InputName: string(descriptor.Input().Name()), InputTypeURL: typeURLPrefix + string(descriptor.Input().FullName()),
+	}
+	if service.Kind == model.KindEvent || event {
+		if descriptor.Output().FullName() != "google.protobuf.Empty" {
+			return nil, "", fmt.Errorf(
+				"event method %s.%s must return google.protobuf.Empty", serviceDescriptor.Name(), descriptor.Name(),
+			)
+		}
+		method.Kind, method.Transport, method.Stream = model.KindEvent, service.EventTransport, service.EventStream
+		contract.HasJetStreamEvents = contract.HasJetStreamEvents || method.Transport == model.JetStream
+		contract.HasCoreEvents = contract.HasCoreEvents || method.Transport != model.JetStream
+		return method, "", nil
+	}
+	method.Kind = model.KindRPC
+	method.OutputName = string(descriptor.Output().Name())
+	method.OutputTypeURL = typeURLPrefix + string(descriptor.Output().FullName())
+	contract.HasRPC = true
+	return method, "", nil
+}
+
+func readMethodOptions(descriptor protoreflect.MethodDescriptor) (leaf string, event bool) {
+	rangeOpts(descriptor.Options(), func(name string, value protoreflect.Value) {
+		switch name {
+		case optMethodSubject:
+			leaf = value.String()
+		case optMethodEvent:
+			event = value.Bool()
+		}
+	})
+	return leaf, event
+}
+
+func addMethod(service *model.Service, method *model.Method) {
+	service.Methods = append(service.Methods, method)
+	if method.Kind == model.KindEvent {
+		service.EventMethods = append(service.EventMethods, method)
+		return
+	}
+	service.RPCMethods = append(service.RPCMethods, method)
 }
 
 // findRealOneof reports the first non-synthetic oneof in msgs (recursively).
@@ -304,20 +323,12 @@ func splitWords(s string) []string {
 		if i+1 < len(runes) {
 			next = runes[i+1]
 		}
-		boundary := false
-		switch {
-		case isLower(prev) && isUpper(cur):
-			boundary = true
-		case isUpper(prev) && isUpper(cur) && isLower(next):
-			boundary = true
-		case (isLetter(prev) && isDigit(cur)) || (isDigit(prev) && isLetter(cur)):
-			boundary = true
-		case cur == '_':
+		if cur == '_' {
 			words = append(words, string(runes[start:i]))
 			start = i + 1
 			continue
 		}
-		if boundary {
+		if wordBoundary(prev, cur, next) {
 			words = append(words, string(runes[start:i]))
 			start = i
 		}
@@ -333,6 +344,13 @@ func splitWords(s string) []string {
 		}
 	}
 	return out
+}
+
+func wordBoundary(previous, current, next rune) bool {
+	return isLower(previous) && isUpper(current) ||
+		isUpper(previous) && isUpper(current) && isLower(next) ||
+		isLetter(previous) && isDigit(current) ||
+		isDigit(previous) && isLetter(current)
 }
 
 func lowerFirst(s string) string {

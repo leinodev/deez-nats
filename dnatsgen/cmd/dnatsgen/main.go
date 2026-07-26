@@ -30,6 +30,7 @@ import (
 	"github.com/leinodev/deez-nats/dnatsgen/internal/gengo"
 	"github.com/leinodev/deez-nats/dnatsgen/internal/genkt"
 	"github.com/leinodev/deez-nats/dnatsgen/internal/genrust"
+	"github.com/leinodev/deez-nats/dnatsgen/internal/model"
 	"github.com/leinodev/deez-nats/dnatsgen/internal/parse"
 )
 
@@ -84,74 +85,101 @@ func run() error {
 		return err
 	}
 
-	// ---- Go ----
-	if *goOut != "" {
-		absGoOut, err := filepath.Abs(*goOut)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(absGoOut, 0o755); err != nil {
-			return err
-		}
-		fdset := parse.FileDescriptorSet(compiled)
-		if err := gengo.GenerateMessages(fdset, files, absGoOut, absGoOut); err != nil {
-			return fmt.Errorf("generate Go messages: %w", err)
-		}
-		for i, fd := range compiled {
-			if len(contracts[i].Services) == 0 {
-				continue // messages-only proto (e.g. annotations); no NATS glue
-			}
-			if err := gengo.GenerateGlue(contracts[i], stem(fd.Path()), absGoOut); err != nil {
-				return fmt.Errorf("generate Go glue for %s: %w", fd.Path(), err)
-			}
-		}
-		fmt.Printf("dnatsgen: wrote Go -> %s\n", *goOut)
+	if err := generateGo(compiled, contracts, files, *goOut); err != nil {
+		return err
 	}
-
-	// ---- Kotlin ----
-	if *ktOut != "" {
-		for i, fd := range compiled {
-			if len(contracts[i].Services) == 0 {
-				continue // messages-only proto; no Kotlin client/server to emit
-			}
-			if err := genkt.GenerateContract(fd, contracts[i], runtimePackage, *ktOut); err != nil {
-				return fmt.Errorf("generate Kotlin for %s: %w", fd.Path(), err)
-			}
-		}
-		if *emitKtRuntime {
-			rtOut := *ktRuntimeOut
-			if rtOut == "" {
-				rtOut = filepath.Join(*ktOut, "runtime")
-			}
-			if err := genkt.GenerateRuntime(runtimePackage, rtOut); err != nil {
-				return fmt.Errorf("generate Kotlin runtime: %w", err)
-			}
-		}
-		fmt.Printf("dnatsgen: wrote Kotlin -> %s\n", *ktOut)
+	if err := generateKotlin(compiled, contracts, runtimePackage, *ktOut, *ktRuntimeOut, *emitKtRuntime); err != nil {
+		return err
 	}
+	return generateRust(compiled, contracts, *rustOut, *rustRuntimeOut, *emitRustRuntime)
+}
 
-	// ---- Rust ----
-	if *rustOut != "" {
-		for i, fd := range compiled {
-			if len(contracts[i].Services) == 0 {
-				continue // messages-only proto; no Rust client/server to emit
-			}
-			if err := genrust.GenerateContract(fd, contracts[i], stem(fd.Path()), *rustOut); err != nil {
-				return fmt.Errorf("generate Rust for %s: %w", fd.Path(), err)
-			}
-		}
-		if *emitRustRuntime {
-			rtOut := *rustRuntimeOut
-			if rtOut == "" {
-				rtOut = *rustOut
-			}
-			if err := genrust.GenerateRuntime(rtOut); err != nil {
-				return fmt.Errorf("generate Rust runtime: %w", err)
-			}
-		}
-		fmt.Printf("dnatsgen: wrote Rust -> %s\n", *rustOut)
+func generateGo(
+	compiled []protoreflect.FileDescriptor,
+	contracts []*model.Contract,
+	files []string,
+	output string,
+) error {
+	if output == "" {
+		return nil
 	}
+	absoluteOutput, err := filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(absoluteOutput, 0o755); err != nil {
+		return err
+	}
+	if err := gengo.GenerateMessages(parse.FileDescriptorSet(compiled), files, absoluteOutput, absoluteOutput); err != nil {
+		return fmt.Errorf("generate Go messages: %w", err)
+	}
+	for i, descriptor := range compiled {
+		if len(contracts[i].Services) == 0 {
+			continue
+		}
+		if err := gengo.GenerateGlue(contracts[i], stem(descriptor.Path()), absoluteOutput); err != nil {
+			return fmt.Errorf("generate Go glue for %s: %w", descriptor.Path(), err)
+		}
+	}
+	fmt.Printf("dnatsgen: wrote Go -> %s\n", output)
+	return nil
+}
 
+func generateKotlin(
+	compiled []protoreflect.FileDescriptor,
+	contracts []*model.Contract,
+	runtimePackage, output, runtimeOutput string,
+	emitRuntime bool,
+) error {
+	if output == "" {
+		return nil
+	}
+	for i, descriptor := range compiled {
+		if len(contracts[i].Services) == 0 {
+			continue
+		}
+		if err := genkt.GenerateContract(descriptor, contracts[i], runtimePackage, output); err != nil {
+			return fmt.Errorf("generate Kotlin for %s: %w", descriptor.Path(), err)
+		}
+	}
+	if emitRuntime {
+		if runtimeOutput == "" {
+			runtimeOutput = filepath.Join(output, "runtime")
+		}
+		if err := genkt.GenerateRuntime(runtimePackage, runtimeOutput); err != nil {
+			return fmt.Errorf("generate Kotlin runtime: %w", err)
+		}
+	}
+	fmt.Printf("dnatsgen: wrote Kotlin -> %s\n", output)
+	return nil
+}
+
+func generateRust(
+	compiled []protoreflect.FileDescriptor,
+	contracts []*model.Contract,
+	output, runtimeOutput string,
+	emitRuntime bool,
+) error {
+	if output == "" {
+		return nil
+	}
+	for i, descriptor := range compiled {
+		if len(contracts[i].Services) == 0 {
+			continue
+		}
+		if err := genrust.GenerateContract(descriptor, contracts[i], stem(descriptor.Path()), output); err != nil {
+			return fmt.Errorf("generate Rust for %s: %w", descriptor.Path(), err)
+		}
+	}
+	if emitRuntime {
+		if runtimeOutput == "" {
+			runtimeOutput = output
+		}
+		if err := genrust.GenerateRuntime(runtimeOutput); err != nil {
+			return fmt.Errorf("generate Rust runtime: %w", err)
+		}
+	}
+	fmt.Printf("dnatsgen: wrote Rust -> %s\n", output)
 	return nil
 }
 
