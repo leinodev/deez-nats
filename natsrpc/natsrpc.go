@@ -123,7 +123,13 @@ func (r *natsRpcImpl) CallRPC(ctx context.Context, subj string, request any, res
 		return fmt.Errorf("%w: empty subject", ErrInvalidSubject)
 	}
 
+	// Headers are copied, not shared: CallOptions is a struct, but its header
+	// map is not. Applying per-call options to a shallow copy wrote into the
+	// map owned by DefaultCallOptions, so two concurrent calls raced on it and
+	// the process died with "concurrent map writes" — and, short of that, one
+	// call saw headers set by another.
 	callOpts := r.options.DefaultCallOptions
+	callOpts.Headers = cloneHeaders(r.options.DefaultCallOptions.Headers)
 	for _, opt := range opts {
 		opt(&callOpts)
 	}
@@ -188,4 +194,19 @@ func (r *natsRpcImpl) wrapRPCHandler(ctx context.Context, info rpcInfo) nats.Msg
 			_ = rpcCtx.writeError(err)
 		}
 	}
+}
+
+// cloneHeaders returns an independent copy of headers, or nil when there is
+// nothing to copy. Values are copied too: nats.Header maps a key to a slice,
+// and sharing that slice brings back the same race one level down.
+func cloneHeaders(headers nats.Header) nats.Header {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	clone := make(nats.Header, len(headers))
+	for key, values := range headers {
+		clone[key] = append([]string(nil), values...)
+	}
+	return clone
 }
